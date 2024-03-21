@@ -7,74 +7,20 @@ use iced::{Command, Element, Font, Length, Subscription};
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use song_list_file::{LoadError, SaveError, SongFileState};
 use uuid::Uuid;
+
+mod song;
+mod song_list_file;
+
+use song::{Song, SongMessage};
 
 static INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Song {
-    id: Uuid,
-    title: String,
-    artist: String,
-    duration: usize,
-    url: String,
-    youtube_id: String,
-
-    #[serde(skip)]
-    state: SongState,
-}
-
-impl Song {
-    fn new(
-        title: String,
-        artist: String,
-        duration: usize,
-        url: String,
-        youtube_id: String,
-    ) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            title,
-            artist,
-            duration,
-            url,
-            youtube_id,
-            state: SongState::NotDownloaded,
-        }
-    }
-
-    fn view(&self) -> Element<SongMessage> {
-        button(row![
-            text("Song Thumbnail"),
-            column![text(&self.title), text(&self.duration), text(&self.artist)]
-                .width(Length::Fill),
-        ])
-        .on_press(SongMessage::Clicked)
-        .into()
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub enum SongState {
-    #[default]
-    NotDownloaded,
-    Downloaded,
-    Downloading {
-        progress: usize,
-        total: usize,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub enum SongMessage {
-    Clicked,
-}
-
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct Main {
     title_value: String,
     artist_name: String,
-    duration: usize,
     url: String,
     youtube_id: String,
 
@@ -87,36 +33,38 @@ enum Message {
     SongMessage(SongMessage),
     TitleChanged(String),
     ArtistChanged(String),
-    DurationChanged(usize),
     UrlChanged(String),
     IdChanged(String),
 }
 
 impl Main {
+    fn new(state: SongFileState) -> Self {
+        Self {
+            songs: state.songs,
+            ..Main::default()
+        }
+    }
+
     fn view(&self) -> Element<Message> {
         let input = column![
             text_input("Song title", &self.title_value)
                 .id(INPUT_ID.clone())
                 .on_input(Message::TitleChanged)
-                .on_submit(Message::CreateSong)
                 .padding(15)
                 .size(30),
             text_input("Artist name", &self.artist_name)
                 .id(INPUT_ID.clone())
                 .on_input(Message::ArtistChanged)
-                .on_submit(Message::CreateSong)
                 .padding(15)
                 .size(30),
             text_input("Url", &self.url)
                 .id(INPUT_ID.clone())
                 .on_input(Message::UrlChanged)
-                .on_submit(Message::CreateSong)
                 .padding(15)
                 .size(30),
             text_input("Youtube ID", &self.youtube_id)
                 .id(INPUT_ID.clone())
                 .on_input(Message::IdChanged)
-                .on_submit(Message::CreateSong)
                 .padding(15)
                 .size(30)
         ];
@@ -133,7 +81,8 @@ impl Main {
                     .width(Length::Fill)
                     .padding(40)
                     .align_x(alignment::Horizontal::Center)
-            )
+            ),
+            button(text("Generate")).on_press(Message::CreateSong)
         ]
         .align_items(Alignment::Center)
         .spacing(20)
@@ -153,10 +102,10 @@ impl Main {
                     self.songs.push(Song::new(
                         self.title_value.clone(),
                         self.artist_name.clone(),
-                        self.duration.clone(),
+                        0, // todo
                         self.url.clone(),
                         self.youtube_id.clone(),
-                    ))
+                    ));
                 }
                 Command::none()
             }
@@ -172,10 +121,6 @@ impl Main {
                 self.artist_name = s;
                 Command::none()
             }
-            Message::DurationChanged(v) => {
-                self.duration = v;
-                Command::none()
-            }
             Message::IdChanged(s) => {
                 self.youtube_id = s;
                 Command::none()
@@ -187,7 +132,95 @@ impl Main {
         }
     }
 }
+#[derive(Default, Debug)]
+enum YTMRS {
+    #[default]
+    Loading,
+    Loaded {
+        state: Main,
+        saving: bool,
+    },
+}
+
+#[derive(Debug, Clone)]
+enum YTMRSMessage {
+    Loaded(Result<SongFileState, LoadError>),
+    Save,
+    Saved(Result<std::path::PathBuf, SaveError>),
+    MainMessage(Message),
+}
+
+impl YTMRS {
+    fn load() -> Command<YTMRSMessage> {
+        Command::perform(SongFileState::load(), YTMRSMessage::Loaded)
+    }
+
+    fn update(&mut self, message: YTMRSMessage) -> Command<YTMRSMessage> {
+        match self {
+            Self::Loading => {
+                match message {
+                    YTMRSMessage::Loaded(Ok(state)) => {
+                        *self = Self::Loaded {
+                            state: Main::new(state),
+                            saving: false,
+                        };
+                    }
+                    YTMRSMessage::Loaded(Err(_)) => {
+                        *self = Self::Loaded {
+                            state: Main::default(),
+                            saving: false,
+                        }
+                    }
+                    _ => {}
+                }
+                Command::none()
+            }
+            Self::Loaded { state, saving: _ } => match message {
+                YTMRSMessage::MainMessage(m) => state.update(m).map(YTMRSMessage::MainMessage),
+                YTMRSMessage::Save => {
+                    println!["Saving"];
+                    Command::perform(
+                        SongFileState {
+                            songs: state.songs.clone(),
+                        }
+                        .save(),
+                        YTMRSMessage::Saved,
+                    )
+                }
+                YTMRSMessage::Saved(success) => {
+                    match success {
+                        Ok(p) => println!["Saved to {p:?}"],
+                        Err(e) => println!["{e:?}"],
+                    }
+                    Command::none()
+                }
+                _ => Command::none(),
+            },
+        }
+    }
+
+    fn view(&self) -> Element<YTMRSMessage> {
+        match self {
+            Self::Loading => container(
+                text("Loading...")
+                    .horizontal_alignment(alignment::Horizontal::Center)
+                    .size(5),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_y()
+            .into(),
+            Self::Loaded { state, saving } => container(column![
+                button("save").on_press(YTMRSMessage::Save),
+                state.view().map(YTMRSMessage::MainMessage)
+            ])
+            .into(),
+        }
+    }
+}
 
 pub fn main() -> iced::Result {
-    iced::run("A cool song list", Main::update, Main::view)
+    iced::program("A cool song list", YTMRS::update, YTMRS::view)
+        .load(YTMRS::load)
+        .run()
 }
