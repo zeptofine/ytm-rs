@@ -1,12 +1,4 @@
-use async_std::fs::File;
-use iced::alignment::{self, Alignment};
-use iced::widget::{
-    button, checkbox, column, container, keyed_column, radio, row, scrollable, text, text_input,
-    Column, Text,
-};
-use iced::{Command, Element, Font, Length, Subscription};
-
-use crate::song::{Song, SongState};
+use crate::song::Song;
 use async_std::prelude::*;
 use serde::{Deserialize, Serialize};
 

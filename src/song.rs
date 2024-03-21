@@ -1,9 +1,5 @@
-use iced::alignment::Alignment;
-use iced::widget::{
-    button, checkbox, column, container, keyed_column, radio, row, scrollable, text, text_input,
-    Column, Text,
-};
-use iced::{Command, Element, Font, Length, Subscription};
+use iced::widget::{button, column, row, text};
+use iced::{Element, Length};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
