@@ -3,15 +3,14 @@ use iced::widget::{
     button, checkbox, column, container, keyed_column, radio, row, scrollable, text, text_input,
     Column, Text,
 };
-use iced::{Command, Element, Font, Length, Subscription};
-
+use iced::{Command, Element, Length, Subscription};
+use iced_aw::{color_picker, number_input};
 use once_cell::sync::Lazy;
-use serde::{Deserialize, Serialize};
 use song_list_file::{LoadError, SaveError, SongFileState};
-use uuid::Uuid;
 
 mod song;
 mod song_list_file;
+mod thumbnails;
 
 use song::{Song, SongMessage};
 
@@ -98,13 +97,13 @@ impl Main {
                     && !self.url.is_empty()
                     && !self.youtube_id.is_empty()
                 {
-                    println!("Creatednew song!");
                     self.songs.push(Song::new(
                         self.title_value.clone(),
                         self.artist_name.clone(),
                         0, // todo
                         self.url.clone(),
                         self.youtube_id.clone(),
+                        None,
                     ));
                 }
                 Command::none()
@@ -211,7 +210,7 @@ impl YTMRS {
             .center_y()
             .into(),
             Self::Loaded { state, saving } => container(column![
-                button("save").on_press(YTMRSMessage::Save),
+                button(if *saving { "saving..." } else { "save" }).on_press(YTMRSMessage::Save),
                 state.view().map(YTMRSMessage::MainMessage)
             ])
             .into(),
