@@ -1,4 +1,5 @@
-use iced::alignment::{self, Alignment};
+use iced::alignment::{Alignment, Horizontal, Vertical};
+use iced::keyboard;
 use iced::widget::{
     button, checkbox, column, container, keyed_column, radio, row, scrollable, text, text_input,
     Column, Text,
@@ -11,29 +12,22 @@ use song_list_file::{LoadError, SaveError, SongFileState};
 mod song;
 mod song_list_file;
 mod thumbnails;
-
 use song::{Song, SongMessage};
 
 static INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 
 #[derive(Debug, Default)]
 struct Main {
-    title_value: String,
-    artist_name: String,
     url: String,
-    youtube_id: String,
 
     songs: Vec<Song>,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
-    CreateSong,
-    SongMessage(SongMessage),
-    TitleChanged(String),
-    ArtistChanged(String),
     UrlChanged(String),
-    IdChanged(String),
+    SearchUrl,
+    SongMessage(SongMessage),
 }
 
 impl Main {
@@ -44,29 +38,17 @@ impl Main {
         }
     }
 
+    fn subscription(&self) -> Subscription<Message> {
+        Subscription::none()
+    }
+
     fn view(&self) -> Element<Message> {
-        let input = column![
-            text_input("Song title", &self.title_value)
-                .id(INPUT_ID.clone())
-                .on_input(Message::TitleChanged)
-                .padding(15)
-                .size(30),
-            text_input("Artist name", &self.artist_name)
-                .id(INPUT_ID.clone())
-                .on_input(Message::ArtistChanged)
-                .padding(15)
-                .size(30),
-            text_input("Url", &self.url)
-                .id(INPUT_ID.clone())
-                .on_input(Message::UrlChanged)
-                .padding(15)
-                .size(30),
-            text_input("Youtube ID", &self.youtube_id)
-                .id(INPUT_ID.clone())
-                .on_input(Message::IdChanged)
-                .padding(15)
-                .size(30)
-        ];
+        let input = column![text_input("Youtube URL....", &self.url)
+            .id(INPUT_ID.clone())
+            .on_input(Message::UrlChanged)
+            .on_submit(Message::SearchUrl)
+            .padding(15)
+            .size(20),];
 
         let songs: Element<_> = column(self.songs.iter().map(|song| {
             song.view()
@@ -79,9 +61,8 @@ impl Main {
                 container(songs)
                     .width(Length::Fill)
                     .padding(40)
-                    .align_x(alignment::Horizontal::Center)
+                    .align_x(Horizontal::Center)
             ),
-            button(text("Generate")).on_press(Message::CreateSong)
         ]
         .align_items(Alignment::Center)
         .spacing(20)
@@ -91,38 +72,12 @@ impl Main {
 
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
-            Message::CreateSong => {
-                if !self.title_value.is_empty()
-                    && !self.artist_name.is_empty()
-                    && !self.url.is_empty()
-                    && !self.youtube_id.is_empty()
-                {
-                    self.songs.push(Song::new(
-                        self.title_value.clone(),
-                        self.artist_name.clone(),
-                        0, // todo
-                        self.url.clone(),
-                        self.youtube_id.clone(),
-                        None,
-                    ));
-                }
-                Command::none()
-            }
             Message::UrlChanged(s) => {
                 self.url = s;
                 Command::none()
             }
-            Message::TitleChanged(s) => {
-                self.title_value = s;
-                Command::none()
-            }
-            Message::ArtistChanged(s) => {
-                self.artist_name = s;
-                Command::none()
-            }
-            Message::IdChanged(s) => {
-                self.youtube_id = s;
-                Command::none()
+            Message::SearchUrl => {
+                todo!();
             }
             Message::SongMessage(_) => {
                 println!["Song was clicked"];
@@ -152,6 +107,28 @@ enum YTMRSMessage {
 impl YTMRS {
     fn load() -> Command<YTMRSMessage> {
         Command::perform(SongFileState::load(), YTMRSMessage::Loaded)
+    }
+
+    fn subscription(&self) -> Subscription<YTMRSMessage> {
+        Subscription::batch([
+            keyboard::on_key_press(|key_code, modifiers| {
+                if !modifiers.command() {
+                    return None;
+                }
+                Self::handle_hotkey(key_code)
+            }),
+            match self {
+                Self::Loaded { state, saving: _ } => {
+                    state.subscription().map(YTMRSMessage::MainMessage)
+                }
+                _ => Subscription::none(),
+            },
+        ])
+    }
+
+    fn handle_hotkey(key: keyboard::Key) -> Option<YTMRSMessage> {
+        println!["{key:?}"];
+        None
     }
 
     fn update(&mut self, message: YTMRSMessage) -> Command<YTMRSMessage> {
@@ -202,7 +179,7 @@ impl YTMRS {
         match self {
             Self::Loading => container(
                 text("Loading...")
-                    .horizontal_alignment(alignment::Horizontal::Center)
+                    .horizontal_alignment(Horizontal::Center)
                     .size(5),
             )
             .width(Length::Fill)
@@ -221,5 +198,6 @@ impl YTMRS {
 pub fn main() -> iced::Result {
     iced::program("A cool song list", YTMRS::update, YTMRS::view)
         .load(YTMRS::load)
+        .subscription(YTMRS::subscription)
         .run()
 }
