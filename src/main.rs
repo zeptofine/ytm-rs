@@ -85,9 +85,15 @@ impl Default for YTMRSAudioManager {
 }
 
 #[derive(Debug, Default)]
+struct RuntimeData {
+    queue: Vec<String>,
+}
+
+#[derive(Debug, Default)]
 struct Main {
     inputs: UserInputs,
     audio_manager: YTMRSAudioManager,
+    runtime_data: RuntimeData,
     settings: YTMRSettings,
 }
 
@@ -100,6 +106,7 @@ enum MainMsg {
     RequestRecieved(RequestResult),
     RequestParsed(YTResponseType),
     RequestParseFailure(YTResponseError),
+    AddSong(Song),
     VolumeChanged(f32),
 }
 
@@ -119,7 +126,20 @@ impl Main {
     }
 
     fn load(&mut self) -> Cm<MainMsg> {
-        Cm::none()
+        self.runtime_data.queue.clear();
+        let mut commands = vec![];
+        let saved_songs = self.settings.saved_songs.clone();
+        for key in self.settings.queue.clone() {
+            let song = saved_songs.get(&key).unwrap();
+            let msg = MainMsg::AddSong(song.clone());
+            commands.push(self.update(msg));
+        }
+
+        Cm::batch(commands)
+    }
+
+    fn prepare_to_save(&mut self) {
+        self.settings.queue = self.runtime_data.queue.clone();
     }
 
     fn subscription(&self) -> Subscription<MainMsg> {
@@ -128,12 +148,8 @@ impl Main {
 
     fn view(&self) -> Element<MainMsg> {
         let input = self.inputs.view();
-
-        let songs: Element<_> = column(self.settings.queue.iter().enumerate().map(|(_, song)| {
-            self.settings
-                .saved_songs
-                .get(song)
-                .unwrap()
+        let songs: Element<_> = column(self.runtime_data.queue.iter().map(|song| {
+            self.settings.saved_songs[song]
                 .view()
                 .map(move |message| MainMsg::SongMessage(song.to_owned(), message))
         }))
@@ -217,7 +233,7 @@ impl Main {
                 YTResponseType::Song(song) => {
                     println!["Request is a song"];
                     let id = song.id.clone();
-                    self.add_song(song)
+                    self.add_ytsong(song)
                         .map(move |msg| MainMsg::SongMessage(id.clone(), msg))
                 }
                 YTResponseType::Tab(t) => {
@@ -233,23 +249,26 @@ impl Main {
                 println!["{:?}", e];
                 Cm::none()
             }
+            MainMsg::AddSong(s) => {
+                let id = s.data.id.clone();
+                self.add_ytsong(s.data)
+                    .map(move |msg| MainMsg::SongMessage(id.clone(), msg))
+            }
         }
     }
 
-    fn add_song(&mut self, s: YTSong) -> Cm<SongMessage> {
-        let id = s.id.clone();
-        let mut handle = self.settings.index.get(&id);
+    fn add_ytsong(&mut self, song: YTSong) -> Cm<SongMessage> {
+        let s = Song::new(song.clone());
+        let id = s.data.id.clone();
         if !self.settings.saved_songs.contains_key(&id) {
-            self.settings
-                .saved_songs
-                .insert(id.clone(), Song::new(s, &mut handle));
+            self.settings.saved_songs.insert(id.clone(), s);
         }
-        self.settings.queue.push(id.clone());
+        self.runtime_data.queue.push(id.clone());
         self.settings
             .saved_songs
             .get(&id)
             .unwrap()
-            .load(&mut handle)
+            .load(&mut self.settings.index.get(&id))
     }
 
     async fn parse_request(response: String) -> Result<YTResponseType, YTResponseError> {
@@ -344,12 +363,12 @@ impl YTMRS {
             Self::Loading => match message {
                 YTMRSMessage::Loaded(Ok(state)) => {
                     let mut main = Main::new(state);
-                    let commands = main.load().map(YTMRSMessage::MainMessage);
+                    let commands = main.load();
                     *self = Self::Loaded {
                         state: main,
                         saving: false,
                     };
-                    commands
+                    commands.map(YTMRSMessage::MainMessage)
                 }
                 YTMRSMessage::Loaded(Err(_)) => {
                     *self = Self::Loaded {
@@ -364,6 +383,7 @@ impl YTMRS {
                 YTMRSMessage::MainMessage(m) => state.update(m).map(YTMRSMessage::MainMessage),
                 YTMRSMessage::Save => {
                     println!["Saving"];
+                    state.prepare_to_save();
                     Cm::perform(state.settings.clone().save(), YTMRSMessage::Saved)
                 }
                 YTMRSMessage::Saved(success) => {

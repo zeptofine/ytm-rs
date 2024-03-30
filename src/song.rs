@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
 use iced::{
+    alignment::{Horizontal, Vertical},
     widget::{button, column, horizontal_space, image as icyimg, row, text, vertical_space, Image},
-    Command as Cm, Element, Length,
+    Alignment, Command as Cm, Element, Length,
 };
 
 use image::GenericImageView;
@@ -14,12 +15,15 @@ use crate::response_types::{UrlString, YTSong};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum ThumbnailState {
     #[default]
+    Unknown,
+
     NotDownloaded,
     Downloaded(PathBuf),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Song {
+    #[serde(skip)]
     pub thumbnail_state: ThumbnailState,
 
     #[serde(skip)]
@@ -29,31 +33,25 @@ pub struct Song {
 }
 
 impl Song {
-    pub fn new(song: YTSong, handle: &mut CacheHandle) -> Self {
-        let thumbnail_path = handle.get_thumbnail_path();
-        let (tstate, timg) = if thumbnail_path.exists() {
-            println!["Image retrieved from path"];
-            (
-                ThumbnailState::Downloaded(thumbnail_path.clone()),
-                Some(icyimg::Handle::from_path(thumbnail_path)),
-            )
-        } else {
-            (ThumbnailState::NotDownloaded, None)
-        };
+    pub fn new(song: YTSong) -> Self {
         Self {
-            thumbnail_state: tstate,
-            thumbnail_handle: timg,
+            thumbnail_state: ThumbnailState::Unknown,
+            thumbnail_handle: None,
             data: song,
         }
     }
 
     pub fn load(&self, handle: &mut CacheHandle) -> Cm<SongMessage> {
+        let thumbnail_path = handle.get_thumbnail_path();
         Cm::batch([match &self.thumbnail_state {
-            ThumbnailState::NotDownloaded => Cm::perform(
-                Song::get_thumbnail(self.data.thumbnail.clone(), handle.get_thumbnail_path()),
+            ThumbnailState::NotDownloaded | ThumbnailState::Unknown => Cm::perform(
+                Song::get_thumbnail(self.data.thumbnail.clone(), thumbnail_path),
                 SongMessage::ThumbnailGathered,
             ),
-            _ => Cm::none(),
+
+            ThumbnailState::Downloaded(s) => {
+                Cm::perform(async { thumbnail_path }, SongMessage::ThumbnailGathered)
+            }
         }])
     }
 
@@ -81,15 +79,15 @@ impl Song {
 
     pub fn view(&self) -> Element<SongMessage> {
         let thumbnail: Element<SongMessage> = match &self.thumbnail_handle {
-            None => text("<...>").into(),
-            Some(h) => {
-                println!["Viewing image at {:?}", self.thumbnail_state];
-                Image::new(h.clone()).height(100).into()
-            }
+            None => text("<...>")
+                .height(100)
+                .width(100)
+                .vertical_alignment(Vertical::Center)
+                .into(),
+            Some(h) => Image::new(h.clone()).height(100).into(),
         };
         button(row![
             column![thumbnail].padding(1),
-            horizontal_space(),
             column![
                 text(&self.data.title),
                 text(&self.data.duration),
