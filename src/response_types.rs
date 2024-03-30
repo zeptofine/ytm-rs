@@ -41,6 +41,7 @@ pub struct YTab {
 pub struct YTSong {
     pub id: String,
     pub title: String,
+    pub description: Option<String>,
     pub channel: String,
     pub view_count: usize,
     pub thumbnail: UrlString,

@@ -25,7 +25,6 @@ pub enum ThumbnailState {
 pub struct Song {
     #[serde(skip)]
     pub thumbnail_state: ThumbnailState,
-
     #[serde(skip)]
     pub thumbnail_handle: Option<icyimg::Handle>,
 
@@ -49,13 +48,16 @@ impl Song {
                 SongMessage::ThumbnailGathered,
             ),
 
-            ThumbnailState::Downloaded(s) => {
+            ThumbnailState::Downloaded(_s) => {
                 Cm::perform(async { thumbnail_path }, SongMessage::ThumbnailGathered)
             }
         }])
     }
 
     pub async fn get_thumbnail(thumbnail_url: String, output: PathBuf) -> PathBuf {
+        if output.exists() {
+            return output;
+        }
         let imgbytes = reqwest::get(thumbnail_url)
             .await
             .unwrap()
