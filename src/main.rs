@@ -1,5 +1,7 @@
 // use std::time::Duration;
 
+use std::fmt::Debug;
+
 use iced::alignment::{Alignment, Horizontal, Vertical};
 use iced::keyboard;
 use iced::widget::{
@@ -10,19 +12,19 @@ use iced::Command as Cm;
 use iced::{Command, Element, Length, Subscription};
 // use iced_aw::{color_picker, number_input};
 // use kira::tween::Tween;
-// use kira::{
-//     manager::{backend::DefaultBackend, AudioManager, AudioManagerSettings},
-//     sound::static_sound::{StaticSoundData, StaticSoundSettings},
-// };
+use kira::{
+    manager::{backend::DefaultBackend, AudioManager, AudioManagerSettings},
+    sound::static_sound::{StaticSoundData, StaticSoundSettings},
+};
 use once_cell::sync::Lazy;
 use reqwest::{Response, Url};
-use response_types::{YTResponseError, YTResponseType};
+use response_types::{YTResponseError, YTResponseType, YTSong};
 use serde::Serialize;
-use song_list_file::{LoadError, SaveError, YTMRSettings};
+use settings::{LoadError, SaveError, YTMRSettings};
 
 mod response_types;
+mod settings;
 mod song;
-mod song_list_file;
 mod thumbnails;
 use song::{Song, SongData, SongMessage};
 
@@ -65,9 +67,29 @@ impl UserInputs {
     }
 }
 
+struct YTMRSAudioManager {
+    m: AudioManager,
+}
+
+impl Debug for YTMRSAudioManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("YTMRSAudioManager")
+    }
+}
+
+impl Default for YTMRSAudioManager {
+    fn default() -> Self {
+        Self {
+            m: AudioManager::<DefaultBackend>::new(AudioManagerSettings::default())
+                .expect("Failed to create backend"),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 struct Main {
     inputs: UserInputs,
+    audio_manager: YTMRSAudioManager,
     settings: YTMRSettings,
 }
 
@@ -76,6 +98,9 @@ enum MainMsg {
     SongMessage(SongMessage),
     InputMessage(InputMessage),
     SearchUrl,
+
+    AddSong(YTSong),
+
     RequestRecieved(RequestResult),
     RequestParsed(YTResponseType),
     RequestParseFailure(YTResponseError),
@@ -90,9 +115,9 @@ enum RequestResult {
 }
 
 impl Main {
-    fn new(state: YTMRSettings) -> Self {
+    fn new(settings: YTMRSettings) -> Self {
         Self {
-            settings: state,
+            settings,
             ..Self::default()
         }
     }
@@ -104,8 +129,12 @@ impl Main {
     fn view(&self) -> Element<MainMsg> {
         let input = self.inputs.view();
 
-        let songs: Element<_> = column(self.settings.songs.iter().map(|song| {
-            song.view()
+        let songs: Element<_> = column(self.settings.queue.iter().map(|song| {
+            self.settings
+                .saved_songs
+                .get(song)
+                .unwrap()
+                .view()
                 .map(move |message| MainMsg::SongMessage(message))
         }))
         .into();
@@ -172,6 +201,7 @@ impl Main {
             MainMsg::RequestParsed(response_type) => match response_type {
                 YTResponseType::Song(s) => {
                     println!["Request is a song"];
+                    self.add_song(s);
                     Cm::none()
                 }
                 YTResponseType::Tab(t) => {
@@ -187,7 +217,19 @@ impl Main {
                 println!["{:?}", e];
                 Cm::none()
             }
+            MainMsg::AddSong(s) => {
+                self.add_song(s);
+                Cm::none()
+            }
         }
+    }
+
+    fn add_song(&mut self, s: YTSong) {
+        let id = s.id.clone();
+        if !self.settings.saved_songs.contains_key(&id) {
+            self.settings.saved_songs.insert(id.clone(), Song::new(s));
+        }
+        self.settings.queue.push(id);
     }
 
     async fn parse_request(response: String) -> Result<YTResponseType, YTResponseError> {

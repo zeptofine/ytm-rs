@@ -4,41 +4,50 @@ use serde::{self, Deserialize, Serialize, Serializer};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Thumbnail {
-    height: u16,
-    width: u16,
-    url: String,
+    pub height: u16,
+    pub width: u16,
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTabEntry {
-    id: String,
-    url: String,
-    title: String,
-    description: Option<String>,
-    duration: usize,
-    view_count: usize,
-    channel: String,
-    channel_url: String,
-    thumbnails: Vec<Thumbnail>,
+    pub id: String,
+    pub url: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub duration: usize,
+    pub view_count: usize,
+    pub channel: String,
+    pub channel_url: String,
+    pub thumbnails: Vec<Thumbnail>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTab {
-    id: String,
-    title: String,
-    view_count: usize,
-    availability: Option<String>,
-    channel: String,
-    webpage_url: String,
-    modified_date: String,
-    entries: Vec<YTabEntry>,
-    thumbnails: Vec<Thumbnail>,
+    pub id: String,
+    pub title: String,
+    pub channel: String,
+    pub view_count: usize,
+    pub thumbnails: Vec<Thumbnail>,
+    pub availability: Option<String>,
+    pub webpage_url: String,
+    pub modified_date: String,
+    pub entries: Vec<YTabEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTSong {
-    channel: String,
-    artists: Vec<String>,
+    pub id: String,
+    pub title: String,
+    pub channel: String,
+    pub view_count: usize,
+    pub thumbnail: String,
+    pub album: String,
+    pub webpage_url: String,
+    pub duration: usize,
+    pub like_count: usize,
+    pub artists: Vec<String>,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,17 +59,17 @@ pub enum YTIEKey {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTSearchEntry {
-    title: Option<String>,
-    id: String,
-    ie_key: YTIEKey,
-    url: String,
+    pub title: Option<String>,
+    pub id: String,
+    pub ie_key: YTIEKey,
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTMSearch {
-    title: String,
-    webpage_url: String,
-    entries: Vec<YTSearchEntry>,
+    pub title: String,
+    pub webpage_url: String,
+    pub entries: Vec<YTSearchEntry>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,8 +92,8 @@ pub enum YTResponseType {
     Song(YTSong),
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct ExtractorKey {
+#[derive(Deserialize)]
+struct ExtractorKey {
     extractor_key: String,
 }
 

@@ -1,4 +1,3 @@
-from pprint import pprint
 from typing import TypedDict
 from flask import Flask, request
 from yt_dlp import YoutubeDL
@@ -57,7 +56,6 @@ def request_info():
                 info["entries"] = list(info["entries"])
             with open("tmp.txt", "wb") as f:
                 f.write(orjson.dumps(info))
-            pprint(info)
             return info
 
     except Exception as e:

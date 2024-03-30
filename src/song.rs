@@ -7,6 +7,11 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::response_types::YTSong;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ThumbnailState {}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SongData {
     pub title: String,
@@ -32,43 +37,15 @@ impl Default for SongData {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Song {
-    id: Uuid,
-    data: SongData,
-    url: String,
-    youtube_id: String,
-}
-
-impl Default for Song {
-    fn default() -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            data: SongData::default(),
-            url: String::new(),
-            youtube_id: String::new(),
-        }
-    }
+    pub id: Uuid,
+    pub data: YTSong,
 }
 
 impl Song {
-    pub fn new(
-        title: String,
-        artist: String,
-        duration: usize,
-        url: String,
-        youtube_id: String,
-        release_date: Option<NaiveDateTime>,
-    ) -> Self {
+    pub fn new(song: YTSong) -> Self {
         Self {
             id: Uuid::new_v4(),
-            data: SongData {
-                title,
-                artist,
-                duration,
-                release_date: release_date.unwrap_or_default(),
-                ..SongData::default()
-            },
-            url,
-            youtube_id,
+            data: song,
         }
     }
 
@@ -78,7 +55,7 @@ impl Song {
             column![
                 text(&self.data.title),
                 text(&self.data.duration),
-                text(&self.data.artist)
+                text(&self.data.artists.join(" & "))
             ]
             .width(Length::Fill),
         ])

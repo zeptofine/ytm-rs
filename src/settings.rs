@@ -1,17 +1,23 @@
-use crate::{song::Song, YTMRS};
+use std::collections::HashMap;
+
+use crate::song::Song;
 use async_std::prelude::*;
 use serde::{Deserialize, Serialize};
 
+type SongID = String;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTMRSettings {
-    pub songs: Vec<Song>,
+    pub saved_songs: HashMap<SongID, Song>,
+    pub queue: Vec<SongID>,
     pub volume: f32,
 }
 
 impl Default for YTMRSettings {
     fn default() -> Self {
         Self {
-            songs: vec![],
+            saved_songs: HashMap::new(),
+            queue: vec![],
             volume: 1.0,
         }
     }
