@@ -1,14 +1,16 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, env};
 
-use crate::song::Song;
 use async_std::prelude::*;
 use serde::{Deserialize, Serialize};
+
+use crate::{cache_handlers::CacheHandler, song::Song, YTMRS};
 
 type SongID = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTMRSettings {
     pub saved_songs: HashMap<SongID, Song>,
+    pub index: CacheHandler,
     pub queue: Vec<SongID>,
     pub volume: f32,
 }
@@ -17,6 +19,11 @@ impl Default for YTMRSettings {
     fn default() -> Self {
         Self {
             saved_songs: HashMap::new(),
+            index: CacheHandler::new({
+                let mut dir = env::current_dir().unwrap();
+                dir.push("cache");
+                dir
+            }),
             queue: vec![],
             volume: 1.0,
         }

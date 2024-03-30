@@ -1,12 +1,14 @@
 use std::borrow::Borrow;
 
-use serde::{self, Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
+
+pub type UrlString = String;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Thumbnail {
     pub height: u16,
     pub width: u16,
-    pub url: String,
+    pub url: UrlString,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,12 +43,11 @@ pub struct YTSong {
     pub title: String,
     pub channel: String,
     pub view_count: usize,
-    pub thumbnail: String,
-    pub album: String,
-    pub webpage_url: String,
+    pub thumbnail: UrlString,
+    pub album: Option<String>,
+    pub webpage_url: UrlString,
     pub duration: usize,
-    pub like_count: usize,
-    pub artists: Vec<String>,
+    pub artists: Option<Vec<String>>,
     pub tags: Vec<String>,
 }
 
@@ -62,13 +63,13 @@ pub struct YTSearchEntry {
     pub title: Option<String>,
     pub id: String,
     pub ie_key: YTIEKey,
-    pub url: String,
+    pub url: UrlString,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTMSearch {
     pub title: String,
-    pub webpage_url: String,
+    pub webpage_url: UrlString,
     pub entries: Vec<YTSearchEntry>,
 }
 

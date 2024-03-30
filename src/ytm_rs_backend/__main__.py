@@ -54,7 +54,7 @@ def request_info():
             assert info is not None
             if "entries" in info:
                 info["entries"] = list(info["entries"])
-            with open("tmp.txt", "wb") as f:
+            with open("tmp.json", "wb") as f:
                 f.write(orjson.dumps(info))
             return info
 

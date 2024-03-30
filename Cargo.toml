@@ -16,6 +16,7 @@ iced_aw = { version = "0.8.0", features = [
     "number_input",
     "selection_list",
 ] }
+image = { version = "0.25.0", features = ["webp", "png", "jpeg"] }
 kira = "0.8.7"
 once_cell = "1.19.0"
 reqwest = { version = "0.12.1", features = ["json", "blocking"] }
@@ -29,4 +30,4 @@ uuid = { version = "1.8.0", features = ['v4', 'fast-rng', 'serde'] }
 [dependencies.iced]
 git = "https://github.com/iced-rs/iced.git"
 rev = "cdb18e610a72b4a025d7e1890140393adee5b087"
-features = ["svg", "debug", "lazy", "tokio"]
+features = ["svg", "debug", "lazy", "tokio", "image"]
