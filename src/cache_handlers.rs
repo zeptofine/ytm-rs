@@ -4,7 +4,10 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-static ID_GEN: Lazy<String> = Lazy::new(|| Uuid::new_v4().to_string());
+fn generate_id() -> String {
+    Uuid::new_v4().to_string()
+}
+
 pub trait YtmCache {
     fn get_thumbnail_path(&mut self) -> PathBuf;
 
@@ -31,7 +34,7 @@ impl CacheHandleItem {
 impl YtmCache for CacheHandleItem {
     fn get_thumbnail_path(&mut self) -> PathBuf {
         if None == self.thumbnail_path {
-            self.thumbnail_path = Some(PathBuf::from(ID_GEN.clone()));
+            self.thumbnail_path = Some(PathBuf::from(generate_id()));
         }
 
         self.thumbnail_path.clone().unwrap()
@@ -39,7 +42,7 @@ impl YtmCache for CacheHandleItem {
 
     fn get_song_path(&mut self) -> PathBuf {
         if None == self.song_path {
-            self.song_path = Some(PathBuf::from(ID_GEN.clone()));
+            self.song_path = Some(PathBuf::from(generate_id()));
         }
         self.song_path.clone().unwrap()
     }

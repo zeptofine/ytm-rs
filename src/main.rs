@@ -127,14 +127,19 @@ impl Main {
 
     fn load(&mut self) -> Cm<MainMsg> {
         self.runtime_data.queue.clear();
-        let mut commands = vec![];
         let saved_songs = self.settings.saved_songs.clone();
-        for key in self.settings.queue.clone() {
-            let song = saved_songs.get(&key).unwrap();
-            let msg = MainMsg::AddSong(song.clone());
-            commands.push(self.update(msg));
-        }
 
+        let commands: Vec<Cm<MainMsg>> = self
+            .settings
+            .queue
+            .clone()
+            .iter()
+            .map(|key| {
+                let song = saved_songs.get(&key.clone()).unwrap();
+                let msg = MainMsg::AddSong(song.clone());
+                self.update(msg)
+            })
+            .collect();
         Cm::batch(commands)
     }
 
@@ -238,7 +243,26 @@ impl Main {
                 }
                 YTResponseType::Tab(t) => {
                     println!["Request is a 'tab'"];
-                    Cm::none()
+                    self.runtime_data.queue.clear();
+
+                    Cm::batch(t.entries.iter().map(|entry| {
+                        let id = entry.id.clone();
+                        let song = YTSong {
+                            id: entry.id.clone(),
+                            title: entry.title.clone(),
+                            description: None,
+                            channel: entry.channel.clone(),
+                            view_count: entry.view_count,
+                            thumbnail: entry.thumbnails[0].url.clone(),
+                            album: None,
+                            webpage_url: entry.url.clone(),
+                            duration: entry.duration,
+                            artists: Some(vec![entry.channel.clone()]),
+                            tags: vec![],
+                        };
+                        self.add_ytsong(song)
+                            .map(move |msg| MainMsg::SongMessage(id.clone(), msg))
+                    }))
                 }
                 YTResponseType::Search(s) => {
                     println!["Request is a search"];

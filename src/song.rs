@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
+use chrono::Duration;
 use iced::{
     alignment::{Horizontal, Vertical},
     widget::{button, column, horizontal_space, image as icyimg, row, text, vertical_space, Image},
     Alignment, Command as Cm, Element, Length,
 };
-
 use image::GenericImageView;
 use serde::{Deserialize, Serialize};
 
@@ -92,7 +92,12 @@ impl Song {
             column![thumbnail].padding(1),
             column![
                 text(&self.data.title),
-                text(&self.data.duration),
+                {
+                    let hours = self.data.duration / 60 / 60;
+                    let minutes = self.data.duration / 60 % 60;
+                    let seconds = self.data.duration % 60;
+                    text(format!("{}:{:0>2}:{:0>2}", hours, minutes, seconds))
+                },
                 text(match &self.data.artists {
                     None => self.data.channel.clone(),
                     Some(v) => v.join(" & "),
@@ -113,7 +118,6 @@ impl Song {
             SongMessage::ThumbnailGathered(pth) => {
                 self.thumbnail_state = ThumbnailState::Downloaded(pth.clone());
                 self.thumbnail_handle = Some(icyimg::Handle::from_path(pth));
-                println!["Thumbnail gathered"];
                 Cm::none()
             }
         }
