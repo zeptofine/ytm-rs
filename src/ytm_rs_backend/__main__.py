@@ -35,7 +35,7 @@ def main():
     return "Hello World!"
 
 
-class ExtractInfoDict(TypedDict):
+class RequestInfoDict(TypedDict):
     url: str
     process: bool
 
@@ -50,34 +50,7 @@ def request_info():
                 url=json["url"],
                 process=json["process"],
             )
-        # q = Queue()
 
-        # def progress():
-        #     while True:
-        #         item = q.get()
-        #         if item is StopIteration:
-        #             break
-        #         yield orjson.dumps(item)
-
-        # def add_p2q(progress):
-        #     q.put(progress)
-
-        # def request_info(json):
-        #     opts_ = opts.copy()
-        #     opts_["progress_hooks"] = [add_p2q]
-        #     with YoutubeDL(opts) as ytdl:
-        #         response = ytdl.extract_info(
-        #             download=False,
-        #             url=json["url"],
-        #             process=json["process"],
-        #         )
-        #         q.put(response)
-        #         q.put(StopIteration)
-
-    #     t = Thread(target=request_info, args=(request.json,))
-    #     t.daemon = True
-    #     t.start()
-    #     return (progress(), {"Content-Type": "application/x-ndjson"})
     except Exception as e:
         return str(e)
 

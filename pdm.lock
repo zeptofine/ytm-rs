@@ -2,10 +2,10 @@
 # It is not intended for manual editing.
 
 [metadata]
-groups = ["default"]
+groups = ["default", "dev"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:0c4fd1444a02c56fb2ab6b6722d73f3dc3a614ce76119de2b33739729a6f51ea"
+content_hash = "sha256:e2e5baa38e4289571284956dbe0a26ac9d7af55ffb2981bbbfc4e94bbc55c7fd"
 
 [[package]]
 name = "blinker"

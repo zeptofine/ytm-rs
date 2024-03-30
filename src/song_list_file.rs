@@ -1,10 +1,20 @@
-use crate::song::Song;
+use crate::{song::Song, YTMRS};
 use async_std::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SongFileState {
+pub struct YTMRSettings {
     pub songs: Vec<Song>,
+    pub volume: f32,
+}
+
+impl Default for YTMRSettings {
+    fn default() -> Self {
+        Self {
+            songs: vec![],
+            volume: 1.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -20,7 +30,7 @@ pub enum SaveError {
     Format,
 }
 
-impl SongFileState {
+impl YTMRSettings {
     pub fn path() -> std::path::PathBuf {
         let mut path = if let Some(project_dirs) =
             directories_next::ProjectDirs::from("rs", "zeptofine", "ytm-rs")
@@ -33,7 +43,7 @@ impl SongFileState {
         path
     }
 
-    pub async fn load() -> Result<SongFileState, LoadError> {
+    pub async fn load() -> Result<YTMRSettings, LoadError> {
         let mut contents = String::new();
         let mut file = async_std::fs::File::open(Self::path())
             .await

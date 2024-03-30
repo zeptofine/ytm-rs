@@ -36,9 +36,6 @@ pub struct Song {
     data: SongData,
     url: String,
     youtube_id: String,
-
-    #[serde(skip)]
-    state: SongState,
 }
 
 impl Default for Song {
@@ -48,7 +45,6 @@ impl Default for Song {
             data: SongData::default(),
             url: String::new(),
             youtube_id: String::new(),
-            state: SongState::NotDownloaded,
         }
     }
 }
@@ -73,7 +69,6 @@ impl Song {
             },
             url,
             youtube_id,
-            state: SongState::NotDownloaded,
         }
     }
 
@@ -90,17 +85,6 @@ impl Song {
         .on_press(SongMessage::Clicked)
         .into()
     }
-}
-
-#[derive(Debug, Clone, Default)]
-pub enum SongState {
-    #[default]
-    NotDownloaded,
-    Downloaded,
-    Downloading {
-        progress: usize,
-        total: usize,
-    },
 }
 
 #[derive(Debug, Clone)]
