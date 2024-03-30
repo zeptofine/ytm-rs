@@ -1,3 +1,4 @@
+from pprint import pprint
 from typing import TypedDict
 from flask import Flask, request
 from yt_dlp import YoutubeDL
@@ -43,13 +44,21 @@ class RequestInfoDict(TypedDict):
 @app.route("/request_info", methods=["POST"])
 def request_info():
     json = request.json
+    assert json is not None
     try:
         with YoutubeDL(opts) as ytdl:
-            return ytdl.extract_info(
+            info = ytdl.extract_info(
                 download=False,
                 url=json["url"],
                 process=json["process"],
             )
+            assert info is not None
+            if "entries" in info:
+                info["entries"] = list(info["entries"])
+            with open("tmp.txt", "wb") as f:
+                f.write(orjson.dumps(info))
+            pprint(info)
+            return info
 
     except Exception as e:
         return str(e)

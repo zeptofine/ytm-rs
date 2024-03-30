@@ -1,31 +1,32 @@
-use std::time::Duration;
+// use std::time::Duration;
 
 use iced::alignment::{Alignment, Horizontal, Vertical};
-use iced::futures;
 use iced::keyboard;
-use iced::time;
 use iced::widget::{
     button, checkbox, column, container, keyed_column, radio, row, scrollable, slider, text,
     text_input, Column, Text,
 };
 use iced::Command as Cm;
 use iced::{Command, Element, Length, Subscription};
-use iced_aw::{color_picker, number_input};
-use kira::tween::Tween;
-use kira::{
-    manager::{backend::DefaultBackend, AudioManager, AudioManagerSettings},
-    sound::static_sound::{StaticSoundData, StaticSoundSettings},
-};
+// use iced_aw::{color_picker, number_input};
+// use kira::tween::Tween;
+// use kira::{
+//     manager::{backend::DefaultBackend, AudioManager, AudioManagerSettings},
+//     sound::static_sound::{StaticSoundData, StaticSoundSettings},
+// };
 use once_cell::sync::Lazy;
+use reqwest::{Response, Url};
+use response_types::{YTResponseError, YTResponseType};
 use serde::Serialize;
 use song_list_file::{LoadError, SaveError, YTMRSettings};
 
+mod response_types;
 mod song;
 mod song_list_file;
 mod thumbnails;
 use song::{Song, SongData, SongMessage};
+
 static INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
-use reqwest::{Response, Url};
 #[derive(Debug, Default)]
 struct UserInputs {
     url: String,
@@ -71,11 +72,13 @@ struct Main {
 }
 
 #[derive(Debug, Clone)]
-enum MainMessage {
+enum MainMsg {
     SongMessage(SongMessage),
     InputMessage(InputMessage),
     SearchUrl,
     RequestRecieved(RequestResult),
+    RequestParsed(YTResponseType),
+    RequestParseFailure(YTResponseError),
     VolumeChanged(f32),
 }
 
@@ -94,21 +97,21 @@ impl Main {
         }
     }
 
-    fn subscription(&self) -> Subscription<MainMessage> {
+    fn subscription(&self) -> Subscription<MainMsg> {
         Subscription::none()
     }
 
-    fn view(&self) -> Element<MainMessage> {
+    fn view(&self) -> Element<MainMsg> {
         let input = self.inputs.view();
 
         let songs: Element<_> = column(self.settings.songs.iter().map(|song| {
             song.view()
-                .map(move |message| MainMessage::SongMessage(message))
+                .map(move |message| MainMsg::SongMessage(message))
         }))
         .into();
         column![
-            input.map(MainMessage::InputMessage),
-            button("Generate").on_press(MainMessage::SearchUrl),
+            input.map(MainMsg::InputMessage),
+            button("Generate").on_press(MainMsg::SearchUrl),
             scrollable(
                 container(songs)
                     .width(Length::Fill)
@@ -118,7 +121,7 @@ impl Main {
             slider(
                 0.0..=1000.0,
                 self.settings.volume * 1000.0,
-                MainMessage::VolumeChanged
+                MainMsg::VolumeChanged
             )
         ]
         .align_items(Alignment::Center)
@@ -127,25 +130,25 @@ impl Main {
         .into()
     }
 
-    fn update(&mut self, message: MainMessage) -> Cm<MainMessage> {
+    fn update(&mut self, message: MainMsg) -> Cm<MainMsg> {
         match message {
-            MainMessage::SongMessage(_) => {
+            MainMsg::SongMessage(_) => {
                 println!["Song was clicked"];
                 Cm::none()
             }
-            MainMessage::InputMessage(i) => self.inputs.update(i).map(MainMessage::InputMessage),
-            MainMessage::VolumeChanged(v) => {
+            MainMsg::InputMessage(i) => self.inputs.update(i).map(MainMsg::InputMessage),
+            MainMsg::VolumeChanged(v) => {
                 self.settings.volume = v / 1000.0;
                 println!["{}", self.settings.volume];
                 Cm::none()
             }
 
-            MainMessage::SearchUrl => {
+            MainMsg::SearchUrl => {
                 // Check if URL is valid
                 match Url::parse(&self.inputs.url) {
                     Ok(u) => Cm::perform(
                         Main::request_info(self.inputs.url.clone()),
-                        MainMessage::RequestRecieved,
+                        MainMsg::RequestRecieved,
                     ),
 
                     Err(e) => {
@@ -154,18 +157,48 @@ impl Main {
                     }
                 }
             }
-            MainMessage::RequestRecieved(response) => {
-                println!["{:?}", response];
+            MainMsg::RequestRecieved(response) => match response {
+                RequestResult::Success(s) => {
+                    Cm::perform(Main::parse_request(s), |result| match result {
+                        Ok(r) => MainMsg::RequestParsed(r),
+                        Err(e) => MainMsg::RequestParseFailure(e),
+                    })
+                }
+                _ => {
+                    println!["{:?}", response];
+                    Cm::none()
+                }
+            },
+            MainMsg::RequestParsed(response_type) => match response_type {
+                YTResponseType::Song(s) => {
+                    println!["Request is a song"];
+                    Cm::none()
+                }
+                YTResponseType::Tab(t) => {
+                    println!["Request is a 'tab'"];
+                    Cm::none()
+                }
+                YTResponseType::Search(s) => {
+                    println!["Request is a search"];
+                    Cm::none()
+                }
+            },
+            MainMsg::RequestParseFailure(e) => {
+                println!["{:?}", e];
                 Cm::none()
             }
         }
+    }
+
+    async fn parse_request(response: String) -> Result<YTResponseType, YTResponseError> {
+        YTResponseType::new(response)
     }
 
     async fn request_info(url: String) -> RequestResult {
         let client = reqwest::Client::new();
 
         match client
-            .post("http://127.0.0.1:55001")
+            .post("http://127.0.0.1:55001/request_info")
             .json(&RequestInfoDict {
                 url,
                 process: false,
@@ -206,7 +239,7 @@ enum YTMRSMessage {
     Loaded(Result<YTMRSettings, LoadError>),
     Save,
     Saved(Result<std::path::PathBuf, SaveError>),
-    MainMessage(MainMessage),
+    MainMessage(MainMsg),
 }
 
 impl YTMRS {
