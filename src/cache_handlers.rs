@@ -1,7 +1,11 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use once_cell::sync::Lazy;
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{MapAccess, Visitor},
+    Deserialize, Serialize,
+};
+use serde::{ser::SerializeMap, Deserializer, Serializer};
 use uuid::Uuid;
 
 fn generate_id() -> String {
@@ -16,15 +20,16 @@ pub trait YtmCache {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct CacheHandleItem {
-    id: String,
-    thumbnail_path: Option<PathBuf>,
-    song_path: Option<PathBuf>,
+    // #[serde(skip)]
+    // pub id: String,
+    pub thumbnail_path: Option<PathBuf>,
+    pub song_path: Option<PathBuf>,
 }
 
 impl CacheHandleItem {
     fn new(id: String) -> Self {
         Self {
-            id,
+            // id,
             thumbnail_path: None,
             song_path: None,
         }
@@ -68,7 +73,7 @@ impl YtmCache for CacheHandle<'_> {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CacheHandler {
     source: PathBuf,
-    map: HashMap<String, CacheHandleItem>,
+    map: CacheMapper,
 }
 
 impl CacheHandler {
@@ -78,18 +83,84 @@ impl CacheHandler {
         }
         Self {
             source: folder,
-            map: HashMap::new(),
+            map: CacheMapper::new(),
         }
     }
 
     pub fn get(&mut self, key: &str) -> CacheHandle {
-        if !self.map.contains_key(key) {
+        if !self.map.map.contains_key(key) {
             let s = key.to_string();
-            self.map.insert(s.clone(), CacheHandleItem::new(s));
+            self.map.map.insert(s.clone(), CacheHandleItem::new(s));
         }
         CacheHandle {
             source: self.source.clone(),
-            item: self.map.get_mut(key).unwrap(),
+            item: self.map.map.get_mut(key).unwrap(),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CacheMapper {
+    map: HashMap<String, CacheHandleItem>,
+}
+
+impl CacheMapper {
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+        }
+    }
+}
+
+struct CacheVisitor;
+
+impl<'de> Visitor<'de> for CacheVisitor {
+    type Value = CacheMapper;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("A cache mapping")
+    }
+
+    fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        let mut map: HashMap<String, CacheHandleItem> = HashMap::new();
+        while let Some((key, value)) = access.next_entry::<String, CacheHandleItem>()? {
+            map.insert(
+                key.clone(),
+                CacheHandleItem {
+                    // id: key,
+                    thumbnail_path: value.thumbnail_path,
+                    song_path: value.song_path,
+                },
+            );
+        }
+
+        Ok(CacheMapper { map: map })
+    }
+}
+
+impl<'de> Deserialize<'de> for CacheMapper {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_map(CacheVisitor)
+    }
+}
+
+impl Serialize for CacheMapper {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut seq = serializer.serialize_map(Some(self.map.len()))?;
+
+        for (key, value) in self.map.clone() {
+            seq.serialize_entry(&key, &value)?;
+        }
+
+        seq.end()
     }
 }
