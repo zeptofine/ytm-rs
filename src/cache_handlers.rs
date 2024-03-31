@@ -20,16 +20,13 @@ pub trait YtmCache {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct CacheHandleItem {
-    // #[serde(skip)]
-    // pub id: String,
-    pub thumbnail_path: Option<PathBuf>,
-    pub song_path: Option<PathBuf>,
+    pub thumbnail_path: Option<PathBuf>, // thumbnail path
+    pub song_path: Option<PathBuf>,      // song path
 }
 
 impl CacheHandleItem {
-    fn new(id: String) -> Self {
+    fn new() -> Self {
         Self {
-            // id,
             thumbnail_path: None,
             song_path: None,
         }
@@ -89,8 +86,7 @@ impl CacheHandler {
 
     pub fn get(&mut self, key: &str) -> CacheHandle {
         if !self.map.map.contains_key(key) {
-            let s = key.to_string();
-            self.map.map.insert(s.clone(), CacheHandleItem::new(s));
+            self.map.map.insert(key.to_string(), CacheHandleItem::new());
         }
         CacheHandle {
             source: self.source.clone(),
@@ -127,14 +123,7 @@ impl<'de> Visitor<'de> for CacheVisitor {
     {
         let mut map: HashMap<String, CacheHandleItem> = HashMap::new();
         while let Some((key, value)) = access.next_entry::<String, CacheHandleItem>()? {
-            map.insert(
-                key.clone(),
-                CacheHandleItem {
-                    // id: key,
-                    thumbnail_path: value.thumbnail_path,
-                    song_path: value.song_path,
-                },
-            );
+            map.insert(key, value);
         }
 
         Ok(CacheMapper { map: map })
