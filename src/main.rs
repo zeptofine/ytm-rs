@@ -3,7 +3,11 @@
 // use std::time::Duration;
 
 use std::fmt::Debug;
+use std::fs::File;
+use std::io::BufReader;
+use std::time::Duration;
 
+// use iced_aw::{color_picker, number_input};
 use iced::{
     alignment::{Alignment, Horizontal, Vertical},
     keyboard,
@@ -13,14 +17,13 @@ use iced::{
     },
     Command as Cm, Element, Length, Subscription,
 };
-use kira::{
-    manager::{backend::DefaultBackend, AudioManager, AudioManagerSettings},
-    sound::static_sound::{StaticSoundData, StaticSoundHandle, StaticSoundSettings},
-};
-// use iced_aw::{color_picker, number_input};
-// use kira::tween::Tween;
 use once_cell::sync::Lazy;
 use reqwest::Url;
+use rodio::{
+    source::{SineWave, Source},
+    OutputStreamHandle,
+};
+use rodio::{Decoder, OutputStream, Sink};
 use serde::Serialize;
 
 mod cache_handlers;
@@ -62,9 +65,9 @@ impl UserInputs {
 }
 
 struct YTMRSAudioManager {
-    m: AudioManager,
-    current_data: Option<StaticSoundData>,
-    current_handle: Option<StaticSoundHandle>,
+    stream: OutputStream,
+    handle: OutputStreamHandle,
+    sink: Sink,
 }
 
 impl Debug for YTMRSAudioManager {
@@ -75,11 +78,12 @@ impl Debug for YTMRSAudioManager {
 
 impl Default for YTMRSAudioManager {
     fn default() -> Self {
+        let (stream, handle) = OutputStream::try_default().unwrap();
+        let sink = Sink::try_new(&handle).unwrap();
         Self {
-            m: AudioManager::<DefaultBackend>::new(AudioManagerSettings::default())
-                .expect("Failed to create backend"),
-            current_data: None,
-            current_handle: None,
+            stream,
+            handle,
+            sink,
         }
     }
 }
@@ -169,24 +173,23 @@ impl Main {
                     .align_x(Horizontal::Center)
             ),
         ]
-        .push_maybe(match &self.audio_manager.current_handle {
-            None => None,
-            Some(h) => Some(progress_bar(
-                0.0..=match &self.audio_manager.current_data {
-                    None => 100.0,
-                    Some(d) => d.duration().as_secs_f32(),
-                },
-                h.position() as f32,
-            )),
-        })
-        .push(row![
-            text("Volume:"),
-            slider(
-                0.0..=1000.0,
-                self.settings.volume * 1000.0,
-                MainMsg::VolumeChanged
-            )
-        ])
+        //     .push_maybe(match &self.audio_manager.current_handle {
+        //         None => None,
+        //         Some(h) => Some(progress_bar(
+        //             0.0..=match &self.audio_manager.current_data {
+        //                 None => 100.0,
+        //                 Some(d) => d.duration().as_secs_f32(),
+        //             },
+        //             h.position() as f32,
+        //         )),
+        //     }
+        // )
+        .push(row![slider(
+            0.0..=1000.0,
+            self.settings.volume * 1000.0,
+            MainMsg::VolumeChanged
+        )
+        .height(20)])
         .align_items(Alignment::Center)
         .spacing(20)
         .padding(10)
@@ -205,6 +208,7 @@ impl Main {
             MainMsg::InputMessage(i) => self.inputs.update(i).map(MainMsg::InputMessage),
             MainMsg::VolumeChanged(v) => {
                 self.settings.volume = v / 1000.0;
+                self.audio_manager.sink.set_volume(self.settings.volume);
                 Cm::none()
             }
 
@@ -446,16 +450,21 @@ pub fn main() -> iced::Result {
     // let response =
     //     reqwest::blocking::get("http:/localhost:55001").expect("Failed to get a response");
 
-    // let mut manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings::default())
-    //     .expect("Failed to create backend");
-    // let sound_data = StaticSoundData::from_file("Alain.wav", StaticSoundSettings::default())
-    //     .expect("Failed to read file");
-    // let handle = manager
-    //     .play(sound_data.clone())
-    //     .expect("Failed to play song");
-
     iced::program("A cool song list", YTMRS::update, YTMRS::view)
         .load(YTMRS::load)
         .subscription(YTMRS::subscription)
         .run()
 }
+
+// pub fn main() {
+//     let (_stream, stream_handle) = OutputStream::try_default().unwrap();
+//     let sink = Sink::try_new(&stream_handle).unwrap();
+
+//     let file = BufReader::new(File::open("Alain.wav").unwrap());
+//     let source = Decoder::new(file).unwrap();
+//     let duration = source.total_duration().unwrap();
+
+//     sink.append(source);
+
+//     std::thread::sleep(duration);
+// }
