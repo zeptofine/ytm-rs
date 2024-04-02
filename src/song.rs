@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use chrono::Duration;
 use iced::{
     alignment::{Horizontal, Vertical},
-    widget::{button, column, horizontal_space, image as icyimg, row, text, vertical_space, Image},
+    widget::{
+        button, column, horizontal_space, image as icyimg, row, text, vertical_space, Image, Space,
+    },
     Alignment, Command as Cm, Element, Length,
 };
 use image::GenericImageView;
@@ -86,25 +88,37 @@ impl Song {
                 .width(100)
                 .vertical_alignment(Vertical::Center)
                 .into(),
-            Some(h) => Image::new(h.clone()).height(100).into(),
+            Some(h) => Image::new(h.clone())
+                .height(100)
+                .width(100)
+                .content_fit(iced::ContentFit::Cover)
+                .into(),
         };
         button(row![
-            column![thumbnail].padding(1),
+            column![thumbnail],
             column![
                 text(&self.data.title),
                 {
-                    let hours = self.data.duration / 60 / 60;
-                    let minutes = self.data.duration / 60 % 60;
-                    let seconds = self.data.duration % 60;
-                    text(format!("{}:{:0>2}:{:0>2}", hours, minutes, seconds))
+                    let hours = self.data.duration / 60.0 / 60.0;
+                    let minutes = self.data.duration / 60.0 % 60.0;
+                    let seconds = self.data.duration % 60.0;
+                    text(format!(
+                        "{}:{:0>2}:{:0>2.2}",
+                        hours.floor(),
+                        minutes.floor(),
+                        seconds.floor(),
+                    ))
                 },
                 text(match &self.data.artists {
                     None => self.data.channel.clone(),
                     Some(v) => v.join(" & "),
                 })
             ]
+            .spacing(1)
+            .padding(5)
             .width(Length::Fill),
         ])
+        .padding(0)
         .on_press(SongMessage::Clicked)
         .into()
     }

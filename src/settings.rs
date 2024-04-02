@@ -58,7 +58,9 @@ impl YTMRSettings {
 
     pub async fn load() -> Result<YTMRSettings, LoadError> {
         let mut contents = String::new();
-        let mut file = async_std::fs::File::open(Self::path())
+        let pth = Self::path();
+        println!["Reading: {pth:?}"];
+        let mut file = async_std::fs::File::open(pth)
             .await
             .map_err(|_| LoadError::File)?;
 

@@ -17,8 +17,8 @@ pub struct YTabEntry {
     pub url: String,
     pub title: String,
     pub description: Option<String>,
-    pub duration: usize,
-    pub view_count: usize,
+    pub duration: f64,
+    pub view_count: Option<usize>,
     pub channel: String,
     pub channel_url: String,
     pub thumbnails: Vec<Thumbnail>,
@@ -28,12 +28,12 @@ pub struct YTabEntry {
 pub struct YTab {
     pub id: String,
     pub title: String,
-    pub channel: String,
-    pub view_count: usize,
-    pub thumbnails: Vec<Thumbnail>,
+    pub channel: Option<String>,
+    pub view_count: Option<usize>,
+    pub thumbnails: Option<Vec<Thumbnail>>,
     pub availability: Option<String>,
     pub webpage_url: String,
-    pub modified_date: String,
+    pub modified_date: Option<String>,
     pub entries: Vec<YTabEntry>,
 }
 
@@ -43,11 +43,11 @@ pub struct YTSong {
     pub title: String,
     pub description: Option<String>,
     pub channel: String,
-    pub view_count: usize,
+    pub view_count: Option<usize>,
     pub thumbnail: UrlString,
     pub album: Option<String>,
     pub webpage_url: UrlString,
-    pub duration: usize,
+    pub duration: f64,
     pub artists: Option<Vec<String>>,
     pub tags: Vec<String>,
 }
@@ -103,6 +103,7 @@ impl YTResponseType {
     pub fn new(response: String) -> Result<Self, YTResponseError> {
         let extractor: ExtractorKey = serde_json::from_str(&response)?;
         let key = extractor.extractor_key.borrow();
+        println!["{key}"];
 
         match key {
             "Youtube" => Ok(YTResponseType::Song(serde_json::from_str(&response)?)),

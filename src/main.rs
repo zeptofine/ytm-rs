@@ -89,15 +89,9 @@ impl Default for YTMRSAudioManager {
 }
 
 #[derive(Debug, Default)]
-struct RuntimeData {
-    queue: Vec<String>,
-}
-
-#[derive(Debug, Default)]
 struct Main {
     inputs: UserInputs,
     audio_manager: YTMRSAudioManager,
-    runtime_data: RuntimeData,
     settings: YTMRSettings,
 }
 
@@ -110,7 +104,8 @@ enum MainMsg {
     RequestRecieved(RequestResult),
     RequestParsed(YTResponseType),
     RequestParseFailure(YTResponseError),
-    AddSong(Song),
+    AddSong(YTSong),
+    AddSavedSong(String),
     VolumeChanged(f32),
 }
 
@@ -130,26 +125,15 @@ impl Main {
     }
 
     fn load(&mut self) -> Cm<MainMsg> {
-        self.runtime_data.queue.clear();
-        let saved_songs = self.settings.saved_songs.clone();
+        let mut commands = vec![];
+        for key in self.settings.queue.clone() {
+            commands.push(self.update(MainMsg::AddSavedSong(key)));
+        }
 
-        let commands: Vec<Cm<MainMsg>> = self
-            .settings
-            .queue
-            .clone()
-            .iter()
-            .map(|key| {
-                let song = saved_songs.get(&key.clone()).unwrap();
-                let msg = MainMsg::AddSong(song.clone());
-                self.update(msg)
-            })
-            .collect();
         Cm::batch(commands)
     }
 
-    fn prepare_to_save(&mut self) {
-        self.settings.queue = self.runtime_data.queue.clone();
-    }
+    fn prepare_to_save(&mut self) {}
 
     fn subscription(&self) -> Subscription<MainMsg> {
         Subscription::none()
@@ -157,7 +141,7 @@ impl Main {
 
     fn view(&self) -> Element<MainMsg> {
         let input = self.inputs.view();
-        let songs: Element<_> = column(self.runtime_data.queue.iter().map(|song| {
+        let songs: Element<_> = column(self.settings.queue.iter().map(|song| {
             self.settings.saved_songs[song]
                 .view()
                 .map(move |message| MainMsg::SongMessage(song.to_owned(), message))
@@ -247,7 +231,7 @@ impl Main {
                 }
                 YTResponseType::Tab(t) => {
                     println!["Request is a 'tab'"];
-                    self.runtime_data.queue.clear();
+                    self.settings.queue.clear();
 
                     Cm::batch(t.entries.iter().map(|entry| {
                         let id = entry.id.clone();
@@ -278,9 +262,19 @@ impl Main {
                 Cm::none()
             }
             MainMsg::AddSong(s) => {
-                let id = s.data.id.clone();
-                self.add_ytsong(s.data)
+                let id = s.id.clone();
+                self.add_ytsong(s)
                     .map(move |msg| MainMsg::SongMessage(id.clone(), msg))
+            }
+            MainMsg::AddSavedSong(id) => {
+                let song = self.settings.saved_songs.get(&id);
+                self.settings.queue.push(id.clone());
+                match song {
+                    Some(s) => s
+                        .load(&mut self.settings.index.get(&id))
+                        .map(move |msg| MainMsg::SongMessage(id.clone(), msg)),
+                    None => Cm::none(),
+                }
             }
         }
     }
@@ -291,7 +285,7 @@ impl Main {
         if !self.settings.saved_songs.contains_key(&id) {
             self.settings.saved_songs.insert(id.clone(), s);
         }
-        self.runtime_data.queue.push(id.clone());
+        self.settings.queue.push(id.clone());
         self.settings
             .saved_songs
             .get(&id)
