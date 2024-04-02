@@ -144,7 +144,7 @@ impl Main {
         let songs: Element<_> = column(self.settings.queue.iter().map(|song| {
             self.settings.saved_songs[song]
                 .view()
-                .map(move |message| MainMsg::SongMessage(song.to_owned(), message))
+                .map(move |message| MainMsg::SongMessage(song.clone(), message))
         }))
         .into();
         column![
@@ -153,27 +153,16 @@ impl Main {
             scrollable(
                 container(songs)
                     .width(Length::Fill)
-                    .padding(40)
+                    .padding(10)
                     .align_x(Horizontal::Center)
             ),
         ]
-        //     .push_maybe(match &self.audio_manager.current_handle {
-        //         None => None,
-        //         Some(h) => Some(progress_bar(
-        //             0.0..=match &self.audio_manager.current_data {
-        //                 None => 100.0,
-        //                 Some(d) => d.duration().as_secs_f32(),
-        //             },
-        //             h.position() as f32,
-        //         )),
-        //     }
+        // .push(row![slider(
+        //     0.0..=1000.0,
+        //     self.settings.volume * 1000.0,
+        //     MainMsg::VolumeChanged
         // )
-        .push(row![slider(
-            0.0..=1000.0,
-            self.settings.volume * 1000.0,
-            MainMsg::VolumeChanged
-        )
-        .height(20)])
+        // .height(20)])
         .align_items(Alignment::Center)
         .spacing(20)
         .padding(10)

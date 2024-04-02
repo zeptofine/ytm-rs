@@ -4,7 +4,9 @@ use chrono::Duration;
 use iced::{
     alignment::{Horizontal, Vertical},
     widget::{
-        button, column, horizontal_space, image as icyimg, row, text, vertical_space, Image, Space,
+        button, column, horizontal_space,
+        image::{self as icyimg, Handle},
+        row, text, vertical_space, Image, Space,
     },
     Alignment, Command as Cm, Element, Length,
 };
@@ -14,21 +16,23 @@ use serde::{Deserialize, Serialize};
 use crate::cache_handlers::{CacheHandle, YtmCache as _};
 use crate::response_types::{UrlString, YTSong};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub enum ThumbnailState {
     #[default]
     Unknown,
 
     NotDownloaded,
-    Downloaded(PathBuf),
+    Downloaded {
+        path: PathBuf,
+        handle: icyimg::Handle,
+        colors: Option<icyimg::Handle>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Song {
     #[serde(skip)]
-    pub thumbnail_state: ThumbnailState,
-    #[serde(skip)]
-    pub thumbnail_handle: Option<icyimg::Handle>,
+    pub thumbnail: ThumbnailState,
 
     pub data: YTSong,
 }
@@ -36,23 +40,24 @@ pub struct Song {
 impl Song {
     pub fn new(song: YTSong) -> Self {
         Self {
-            thumbnail_state: ThumbnailState::Unknown,
-            thumbnail_handle: None,
+            thumbnail: ThumbnailState::Unknown,
             data: song,
         }
     }
 
     pub fn load(&self, handle: &mut CacheHandle) -> Cm<SongMessage> {
         let thumbnail_path = handle.get_thumbnail_path();
-        Cm::batch([match &self.thumbnail_state {
+        Cm::batch([match &self.thumbnail {
             ThumbnailState::NotDownloaded | ThumbnailState::Unknown => Cm::perform(
                 Song::get_thumbnail(self.data.thumbnail.clone(), thumbnail_path),
                 SongMessage::ThumbnailGathered,
             ),
 
-            ThumbnailState::Downloaded(_s) => {
-                Cm::perform(async { thumbnail_path }, SongMessage::ThumbnailGathered)
-            }
+            ThumbnailState::Downloaded {
+                path,
+                handle,
+                colors,
+            } => Cm::perform(async { thumbnail_path }, SongMessage::ThumbnailGathered),
         }])
     }
 
@@ -82,17 +87,23 @@ impl Song {
     }
 
     pub fn view(&self) -> Element<SongMessage> {
-        let thumbnail: Element<SongMessage> = match &self.thumbnail_handle {
-            None => text("<...>")
-                .height(100)
-                .width(100)
-                .vertical_alignment(Vertical::Center)
-                .into(),
-            Some(h) => Image::new(h.clone())
+        let thumbnail: Element<SongMessage> = if let ThumbnailState::Downloaded {
+            path: _,
+            handle,
+            colors: _,
+        } = &self.thumbnail
+        {
+            Image::new(handle.clone())
                 .height(100)
                 .width(100)
                 .content_fit(iced::ContentFit::Cover)
-                .into(),
+                .into()
+        } else {
+            text("<...>")
+                .height(100)
+                .width(100)
+                .vertical_alignment(Vertical::Center)
+                .into()
         };
         button(row![
             column![thumbnail],
@@ -130,8 +141,12 @@ impl Song {
                 Cm::none()
             }
             SongMessage::ThumbnailGathered(pth) => {
-                self.thumbnail_state = ThumbnailState::Downloaded(pth.clone());
-                self.thumbnail_handle = Some(icyimg::Handle::from_path(pth));
+                let handle = icyimg::Handle::from_path(&pth);
+                self.thumbnail = ThumbnailState::Downloaded {
+                    path: pth,
+                    handle: handle,
+                    colors: None,
+                };
                 Cm::none()
             }
         }

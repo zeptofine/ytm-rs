@@ -20,14 +20,16 @@ pub trait YtmCache {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct CacheHandleItem {
-    pub thumbnail_path: Option<PathBuf>, // thumbnail path
-    pub song_path: Option<PathBuf>,      // song path
+    pub thumbnail_path: Option<PathBuf>,   // thumbnail path
+    pub thumbnail_colors: Option<PathBuf>, // generated thumbnail material colors
+    pub song_path: Option<PathBuf>,        // song path
 }
 
 impl CacheHandleItem {
     fn new() -> Self {
         Self {
             thumbnail_path: None,
+            thumbnail_colors: None,
             song_path: None,
         }
     }
