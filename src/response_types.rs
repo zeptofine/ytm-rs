@@ -41,13 +41,17 @@ pub struct YTab {
 pub struct YTSong {
     pub id: String,
     pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub channel: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub view_count: Option<usize>,
     pub thumbnail: UrlString,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub album: Option<String>,
     pub webpage_url: UrlString,
     pub duration: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub artists: Option<Vec<String>>,
     pub tags: Vec<String>,
 }

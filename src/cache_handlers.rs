@@ -20,9 +20,12 @@ pub trait YtmCache {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct CacheHandleItem {
-    pub thumbnail_path: Option<PathBuf>,   // thumbnail path
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thumbnail_path: Option<PathBuf>, // thumbnail path
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub thumbnail_colors: Option<PathBuf>, // generated thumbnail material colors
-    pub song_path: Option<PathBuf>,        // song path
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub song_path: Option<PathBuf>, // song path
 }
 
 impl CacheHandleItem {

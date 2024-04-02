@@ -127,7 +127,12 @@ impl Main {
     fn load(&mut self) -> Cm<MainMsg> {
         let mut commands = vec![];
         for key in self.settings.queue.clone() {
-            commands.push(self.update(MainMsg::AddSavedSong(key)));
+            if let Some(song) = self.settings.saved_songs.get(&key) {
+                commands.push(
+                    song.load(&mut self.settings.index.get(&key))
+                        .map(move |msg| MainMsg::SongMessage(key.clone(), msg)),
+                )
+            }
         }
 
         Cm::batch(commands)
