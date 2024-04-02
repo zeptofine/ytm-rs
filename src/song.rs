@@ -13,21 +13,11 @@ use iced::{
 use image::GenericImageView;
 use serde::{Deserialize, Serialize};
 
-use crate::cache_handlers::{CacheHandle, YtmCache as _};
-use crate::response_types::{UrlString, YTSong};
-
-#[derive(Debug, Clone, Default)]
-pub enum ThumbnailState {
-    #[default]
-    Unknown,
-
-    NotDownloaded,
-    Downloaded {
-        path: PathBuf,
-        handle: icyimg::Handle,
-        colors: Option<icyimg::Handle>,
-    },
-}
+use crate::{
+    cache_handlers::{CacheHandle, YtmCache as _},
+    response_types::{UrlString, YTSong},
+    thumbnails::{get_thumbnail, ThumbnailState},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Song {
@@ -48,42 +38,17 @@ impl Song {
     pub fn load(&self, handle: &mut CacheHandle) -> Cm<SongMessage> {
         let thumbnail_path = handle.get_thumbnail_path();
         Cm::batch([match &self.thumbnail {
-            ThumbnailState::NotDownloaded | ThumbnailState::Unknown => Cm::perform(
-                Song::get_thumbnail(self.data.thumbnail.clone(), thumbnail_path),
+            ThumbnailState::Unknown => Cm::perform(
+                get_thumbnail(self.data.thumbnail.clone(), thumbnail_path),
                 SongMessage::ThumbnailGathered,
             ),
 
             ThumbnailState::Downloaded {
-                path,
-                handle,
-                colors,
+                path: _,
+                handle: _,
+                colors: _,
             } => Cm::perform(async { thumbnail_path }, SongMessage::ThumbnailGathered),
         }])
-    }
-
-    pub async fn get_thumbnail(thumbnail_url: String, output: PathBuf) -> PathBuf {
-        if output.exists() {
-            return output;
-        }
-        let imgbytes = reqwest::get(thumbnail_url)
-            .await
-            .unwrap()
-            .bytes()
-            .await
-            .unwrap();
-        let mut thumbnail = image::load_from_memory(&imgbytes).unwrap();
-        let (w, h) = thumbnail.dimensions();
-        // crop it to a square
-        let smaller = h.min(w);
-        let left = (w - smaller) / 2;
-        let top = (h - smaller) / 2;
-
-        thumbnail = thumbnail.crop(left, top, smaller, smaller);
-        match thumbnail.save(&output) {
-            Ok(_) => {}
-            Err(e) => println!["Failed to save thumbnail: {}", e],
-        };
-        output
     }
 
     pub fn view(&self) -> Element<SongMessage> {

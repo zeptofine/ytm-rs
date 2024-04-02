@@ -30,6 +30,7 @@ mod cache_handlers;
 mod response_types;
 mod settings;
 mod song;
+mod thumbnails;
 use response_types::{YTResponseError, YTResponseType, YTSong};
 use settings::{LoadError, SaveError, YTMRSettings};
 use song::{Song, SongMessage};
@@ -104,8 +105,6 @@ enum MainMsg {
     RequestRecieved(RequestResult),
     RequestParsed(YTResponseType),
     RequestParseFailure(YTResponseError),
-    AddSong(YTSong),
-    AddSavedSong(String),
     VolumeChanged(f32),
 }
 
@@ -163,8 +162,8 @@ impl Main {
             ),
         ]
         // .push(row![slider(
-        //     0.0..=1000.0,
-        //     self.settings.volume * 1000.0,
+        //     0.0..=100.0,
+        //     self.settings.volume * 100.0,
         //     MainMsg::VolumeChanged
         // )
         // .height(20)])
@@ -185,7 +184,7 @@ impl Main {
                 .map(move |msg| MainMsg::SongMessage(key.clone(), msg)),
             MainMsg::InputMessage(i) => self.inputs.update(i).map(MainMsg::InputMessage),
             MainMsg::VolumeChanged(v) => {
-                self.settings.volume = v / 1000.0;
+                self.settings.volume = v / 100.0;
                 self.audio_manager.sink.set_volume(self.settings.volume);
                 Cm::none()
             }
@@ -254,21 +253,6 @@ impl Main {
             MainMsg::RequestParseFailure(e) => {
                 println!["{:?}", e];
                 Cm::none()
-            }
-            MainMsg::AddSong(s) => {
-                let id = s.id.clone();
-                self.add_ytsong(s)
-                    .map(move |msg| MainMsg::SongMessage(id.clone(), msg))
-            }
-            MainMsg::AddSavedSong(id) => {
-                let song = self.settings.saved_songs.get(&id);
-                self.settings.queue.push(id.clone());
-                match song {
-                    Some(s) => s
-                        .load(&mut self.settings.index.get(&id))
-                        .map(move |msg| MainMsg::SongMessage(id.clone(), msg)),
-                    None => Cm::none(),
-                }
             }
         }
     }
