@@ -101,14 +101,12 @@ pub enum YTResponseType {
 }
 
 #[derive(Deserialize)]
-struct ExtractorKey {
-    extractor_key: String,
-}
+struct ExtractorKey(String);
 
 impl YTResponseType {
     pub fn new(response: String) -> Result<Self, YTResponseError> {
         let extractor: ExtractorKey = serde_json::from_str(&response)?;
-        let key = extractor.extractor_key.borrow();
+        let key = extractor.0.borrow();
         println!["{key}"];
 
         match key {

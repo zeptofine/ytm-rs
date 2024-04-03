@@ -90,26 +90,22 @@ impl CacheHandler {
     }
 
     pub fn get(&mut self, key: &str) -> CacheHandle {
-        if !self.map.map.contains_key(key) {
-            self.map.map.insert(key.to_string(), CacheHandleItem::new());
+        if !self.map.0.contains_key(key) {
+            self.map.0.insert(key.to_string(), CacheHandleItem::new());
         }
         CacheHandle {
             source: self.source.clone(),
-            item: self.map.map.get_mut(key).unwrap(),
+            item: self.map.0.get_mut(key).unwrap(),
         }
     }
 }
 
 #[derive(Debug, Clone)]
-struct CacheMapper {
-    map: HashMap<String, CacheHandleItem>,
-}
+struct CacheMapper(HashMap<String, CacheHandleItem>);
 
 impl CacheMapper {
     pub fn new() -> Self {
-        Self {
-            map: HashMap::new(),
-        }
+        Self(HashMap::new())
     }
 }
 
@@ -131,7 +127,7 @@ impl<'de> Visitor<'de> for CacheVisitor {
             map.insert(key, value);
         }
 
-        Ok(CacheMapper { map: map })
+        Ok(CacheMapper(map))
     }
 }
 
@@ -149,9 +145,9 @@ impl Serialize for CacheMapper {
     where
         S: serde::Serializer,
     {
-        let mut seq = serializer.serialize_map(Some(self.map.len()))?;
+        let mut seq = serializer.serialize_map(Some(self.0.len()))?;
 
-        for (key, value) in self.map.clone() {
+        for (key, value) in self.0.clone() {
             seq.serialize_entry(&key, &value)?;
         }
 

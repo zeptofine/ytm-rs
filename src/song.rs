@@ -40,14 +40,25 @@ impl Song {
         Cm::batch([match &self.thumbnail {
             ThumbnailState::Unknown => Cm::perform(
                 get_thumbnail(self.data.thumbnail.clone(), thumbnail_path),
-                SongMessage::ThumbnailGathered,
+                |r| match r {
+                    Err(_) => SongMessage::ThumnailGatherFailure,
+                    Ok((p, m)) => SongMessage::ThumbnailGathered(p, m),
+                },
             ),
 
             ThumbnailState::Downloaded {
                 path: _,
                 handle: _,
                 colors: _,
-            } => Cm::perform(async { thumbnail_path }, SongMessage::ThumbnailGathered),
+            } => Cm::perform(
+                async {
+                    let mut mp = thumbnail_path.clone();
+                    mp.push("_mat");
+
+                    (thumbnail_path, mp)
+                },
+                |(p, m)| SongMessage::ThumbnailGathered(p, m),
+            ),
         }])
     }
 
@@ -105,13 +116,18 @@ impl Song {
                 println!["Song was clicked"];
                 Cm::none()
             }
-            SongMessage::ThumbnailGathered(pth) => {
+            SongMessage::ThumbnailGathered(pth, mat) => {
                 let handle = icyimg::Handle::from_path(&pth);
+
                 self.thumbnail = ThumbnailState::Downloaded {
                     path: pth,
                     handle: handle,
                     colors: None,
                 };
+                Cm::none()
+            }
+            SongMessage::ThumnailGatherFailure => {
+                println!["Failed to gather thumbnail"];
                 Cm::none()
             }
         }
@@ -121,5 +137,6 @@ impl Song {
 #[derive(Debug, Clone)]
 pub enum SongMessage {
     Clicked,
-    ThumbnailGathered(PathBuf),
+    ThumbnailGathered(PathBuf, PathBuf),
+    ThumnailGatherFailure,
 }
