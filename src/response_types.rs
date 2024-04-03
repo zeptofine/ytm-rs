@@ -53,6 +53,8 @@ pub struct YTSong {
     pub duration: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artists: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub tags: Vec<String>,
 }
 
