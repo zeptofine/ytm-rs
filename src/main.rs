@@ -66,9 +66,9 @@ impl UserInputs {
 }
 
 struct YTMRSAudioManager {
-    stream: OutputStream,
-    handle: OutputStreamHandle,
-    sink: Sink,
+    _stream: OutputStream,
+    _handle: OutputStreamHandle,
+    _sink: Sink,
 }
 
 impl Debug for YTMRSAudioManager {
@@ -82,9 +82,9 @@ impl Default for YTMRSAudioManager {
         let (stream, handle) = OutputStream::try_default().unwrap();
         let sink = Sink::try_new(&handle).unwrap();
         Self {
-            stream,
-            handle,
-            sink,
+            _stream: stream,
+            _handle: handle,
+            _sink: sink,
         }
     }
 }
@@ -92,7 +92,7 @@ impl Default for YTMRSAudioManager {
 #[derive(Debug, Default)]
 struct Main {
     inputs: UserInputs,
-    audio_manager: YTMRSAudioManager,
+    // audio_manager: YTMRSAudioManager,
     settings: YTMRSettings,
 }
 
@@ -105,7 +105,6 @@ enum MainMsg {
     RequestRecieved(RequestResult),
     RequestParsed(YTResponseType),
     RequestParseFailure(YTResponseError),
-    VolumeChanged(f32),
 }
 
 #[derive(Debug, Clone)]
@@ -183,12 +182,6 @@ impl Main {
                 .update(msg)
                 .map(move |msg| MainMsg::SongMessage(key.clone(), msg)),
             MainMsg::InputMessage(i) => self.inputs.update(i).map(MainMsg::InputMessage),
-            MainMsg::VolumeChanged(v) => {
-                self.settings.volume = v / 100.0;
-                self.audio_manager.sink.set_volume(self.settings.volume);
-                Cm::none()
-            }
-
             MainMsg::SearchUrl => {
                 // Check if URL is valid
                 match Url::parse(&self.inputs.url) {
@@ -245,7 +238,7 @@ impl Main {
                             .map(move |msg| MainMsg::SongMessage(id.clone(), msg))
                     }))
                 }
-                YTResponseType::Search(s) => {
+                YTResponseType::Search(_s) => {
                     println!["Request is a search"];
                     Cm::none()
                 }
@@ -307,7 +300,7 @@ struct RequestInfoDict {
 }
 
 #[derive(Default, Debug)]
-enum YTMRS {
+enum Ytmrs {
     #[default]
     Loading,
     Loaded {
@@ -324,7 +317,7 @@ enum YTMRSMessage {
     MainMessage(MainMsg),
 }
 
-impl YTMRS {
+impl Ytmrs {
     fn load() -> Cm<YTMRSMessage> {
         Cm::perform(YTMRSettings::load(), |s| {
             println!["Loaded: {s:?}"];
@@ -422,9 +415,9 @@ pub fn main() -> iced::Result {
     // let response =
     //     reqwest::blocking::get("http:/localhost:55001").expect("Failed to get a response");
 
-    iced::program("A cool song list", YTMRS::update, YTMRS::view)
-        .load(YTMRS::load)
-        .subscription(YTMRS::subscription)
+    iced::program("A cool song list", Ytmrs::update, Ytmrs::view)
+        .load(Ytmrs::load)
+        .subscription(Ytmrs::subscription)
         .run()
 }
 

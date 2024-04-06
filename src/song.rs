@@ -10,13 +10,13 @@ use iced::{
     },
     Alignment, Command as Cm, Element, Length,
 };
-use image::GenericImageView;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
     cache_handlers::{CacheHandle, YtmCache as _},
     response_types::{UrlString, YTSong},
-    thumbnails::{get_thumbnail, ThumbnailState},
+    thumbnails::{get_thumbnail, SongTheme, ThumbnailState},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,23 +42,22 @@ impl Song {
                 get_thumbnail(self.data.thumbnail.clone(), thumbnail_path),
                 |r| match r {
                     Err(_) => SongMessage::ThumnailGatherFailure,
-                    Ok((p, m)) => SongMessage::ThumbnailGathered(p, m),
+                    Ok((p, m)) => SongMessage::ThumbnailGathered(p, Box::new(m)),
                 },
             ),
+            _ => Cm::none(), // ThumbnailState::Downloaded {
+                             //     path: _,
+                             //     handle: _,
+                             //     colors: _,
+                             // } => Cm::perform(
+                             //     async {
+                             //         let mut mp = thumbnail_path.clone();
+                             //         mp.push("_mat");
 
-            ThumbnailState::Downloaded {
-                path: _,
-                handle: _,
-                colors: _,
-            } => Cm::perform(
-                async {
-                    let mut mp = thumbnail_path.clone();
-                    mp.push("_mat");
-
-                    (thumbnail_path, mp)
-                },
-                |(p, m)| SongMessage::ThumbnailGathered(p, m),
-            ),
+                             //         (thumbnail_path, mp)
+                             //     },
+                             //     |(p, m)| SongMessage::ThumbnailGathered(p, m),
+                             // ),
         }])
     }
 
@@ -116,12 +115,12 @@ impl Song {
                 println!["Song was clicked"];
                 Cm::none()
             }
-            SongMessage::ThumbnailGathered(pth, mat) => {
+            SongMessage::ThumbnailGathered(pth, _mat) => {
                 let handle = icyimg::Handle::from_path(&pth);
 
                 self.thumbnail = ThumbnailState::Downloaded {
                     path: pth,
-                    handle: handle,
+                    handle,
                     colors: None,
                 };
                 Cm::none()
@@ -137,6 +136,6 @@ impl Song {
 #[derive(Debug, Clone)]
 pub enum SongMessage {
     Clicked,
-    ThumbnailGathered(PathBuf, PathBuf),
+    ThumbnailGathered(PathBuf, Box<SongTheme>),
     ThumnailGatherFailure,
 }

@@ -3,7 +3,7 @@ use std::{collections::HashMap, env};
 use async_std::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{cache_handlers::CacheHandler, song::Song, YTMRS};
+use crate::{cache_handlers::CacheHandler, song::Song, Ytmrs};
 
 type SongID = String;
 

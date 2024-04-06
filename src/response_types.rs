@@ -17,7 +17,7 @@ pub struct YTabEntry {
     pub url: String,
     pub title: String,
     pub description: Option<String>,
-    pub duration: f64,
+    pub duration: f32,
     pub view_count: Option<usize>,
     pub channel: String,
     pub channel_url: String,
@@ -50,7 +50,7 @@ pub struct YTSong {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub album: Option<String>,
     pub webpage_url: UrlString,
-    pub duration: f64,
+    pub duration: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artists: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -101,12 +101,14 @@ pub enum YTResponseType {
 }
 
 #[derive(Deserialize)]
-struct ExtractorKey(String);
+struct ExtractorKey {
+    extractor_key: String,
+}
 
 impl YTResponseType {
     pub fn new(response: String) -> Result<Self, YTResponseError> {
         let extractor: ExtractorKey = serde_json::from_str(&response)?;
-        let key = extractor.0.borrow();
+        let key = extractor.extractor_key.borrow();
         println!["{key}"];
 
         match key {

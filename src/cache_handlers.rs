@@ -40,7 +40,7 @@ impl CacheHandleItem {
 
 impl YtmCache for CacheHandleItem {
     fn get_thumbnail_path(&mut self) -> PathBuf {
-        if None == self.thumbnail_path {
+        if self.thumbnail_path.is_none() {
             self.thumbnail_path = Some(PathBuf::from(generate_id()));
         }
 
@@ -48,7 +48,7 @@ impl YtmCache for CacheHandleItem {
     }
 
     fn get_song_path(&mut self) -> PathBuf {
-        if None == self.song_path {
+        if self.song_path.is_none() {
             self.song_path = Some(PathBuf::from(generate_id()));
         }
         self.song_path.clone().unwrap()
