@@ -8,7 +8,7 @@ use material_colors::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::song::Song;
+use crate::{response_types::Thumbnail, song::Song};
 
 #[derive(Debug, Clone, Default)]
 pub enum ThumbnailState {
@@ -18,14 +18,14 @@ pub enum ThumbnailState {
     Downloaded {
         path: PathBuf,
         handle: Handle,
-        colors: Option<Handle>,
+        colors: Option<SongTheme>,
     },
 }
 
 pub async fn get_thumbnail(
     thumbnail_url: String,
     output: PathBuf,
-) -> Result<(PathBuf, SongTheme), image::ImageError> {
+) -> Result<ThumbnailState, image::ImageError> {
     // let mut material_path = output.clone();
     // material_path.push("_mat");
 
@@ -62,7 +62,12 @@ pub async fn get_thumbnail(
     let theme = ThemeBuilder::with_source(col).build();
     println!["{:?}", theme];
 
-    Ok((output, theme.into()))
+    // Ok((output, theme.into()))
+    Ok(ThumbnailState::Downloaded {
+        handle: Handle::from_path(&output),
+        path: output,
+        colors: Some(SongTheme(theme)),
+    })
 }
 
 #[derive(Debug)]

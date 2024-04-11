@@ -42,7 +42,7 @@ impl Song {
                 get_thumbnail(self.data.thumbnail.clone(), thumbnail_path),
                 |r| match r {
                     Err(_) => SongMessage::ThumnailGatherFailure,
-                    Ok((p, m)) => SongMessage::ThumbnailGathered(p, Box::new(m)),
+                    Ok(state) => SongMessage::ThumbnailGathered(state),
                 },
             ),
             _ => Cm::none(), // ThumbnailState::Downloaded {
@@ -115,14 +115,8 @@ impl Song {
                 println!["Song was clicked"];
                 Cm::none()
             }
-            SongMessage::ThumbnailGathered(pth, _mat) => {
-                let handle = icyimg::Handle::from_path(&pth);
-
-                self.thumbnail = ThumbnailState::Downloaded {
-                    path: pth,
-                    handle,
-                    colors: None,
-                };
+            SongMessage::ThumbnailGathered(state) => {
+                self.thumbnail = state;
                 Cm::none()
             }
             SongMessage::ThumnailGatherFailure => {
@@ -136,6 +130,6 @@ impl Song {
 #[derive(Debug, Clone)]
 pub enum SongMessage {
     Clicked,
-    ThumbnailGathered(PathBuf, Box<SongTheme>),
+    ThumbnailGathered(ThumbnailState),
     ThumnailGatherFailure,
 }
