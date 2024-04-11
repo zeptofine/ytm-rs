@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     cache_handlers::{CacheHandle, YtmCache as _},
     response_types::{UrlString, YTSong},
-    thumbnails::{get_thumbnail, SongTheme, ThumbnailState},
+    thumbnails::{get_thumbnail, ThumbnailState},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,24 +62,20 @@ impl Song {
     }
 
     pub fn view(&self) -> Element<SongMessage> {
-        let thumbnail: Element<SongMessage> = if let ThumbnailState::Downloaded {
-            path: _,
-            handle,
-            colors: _,
-        } = &self.thumbnail
-        {
-            Image::new(handle.clone())
-                .height(100)
-                .width(100)
-                .content_fit(iced::ContentFit::Cover)
-                .into()
-        } else {
-            text("<...>")
-                .height(100)
-                .width(100)
-                .vertical_alignment(Vertical::Center)
-                .into()
-        };
+        let thumbnail: Element<SongMessage> =
+            if let ThumbnailState::Downloaded { path: _, handle } = &self.thumbnail {
+                Image::new(handle.clone())
+                    .height(100)
+                    .width(100)
+                    .content_fit(iced::ContentFit::Cover)
+                    .into()
+            } else {
+                text("<...>")
+                    .height(100)
+                    .width(100)
+                    .vertical_alignment(Vertical::Center)
+                    .into()
+            };
         button(row![
             column![thumbnail],
             column![

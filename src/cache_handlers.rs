@@ -23,8 +23,6 @@ struct CacheHandleItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thumbnail_path: Option<PathBuf>, // thumbnail path
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub thumbnail_colors: Option<PathBuf>, // generated thumbnail material colors
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub song_path: Option<PathBuf>, // song path
 }
 
@@ -32,7 +30,6 @@ impl CacheHandleItem {
     fn new() -> Self {
         Self {
             thumbnail_path: None,
-            thumbnail_colors: None,
             song_path: None,
         }
     }
