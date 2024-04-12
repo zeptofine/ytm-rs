@@ -1,11 +1,10 @@
 use std::path::PathBuf;
 
 use iced::widget::image::Handle;
-use image::{self, imageops::FilterType, GenericImageView};
+use image::{self, GenericImageView};
 
-use serde::{Deserialize, Serialize};
-
-use crate::{response_types::Thumbnail, song::Song};
+// use serde::{Deserialize, Serialize};
+// use crate::{response_types::Thumbnail, song::Song};
 
 #[derive(Debug, Clone, Default)]
 pub enum ThumbnailState {

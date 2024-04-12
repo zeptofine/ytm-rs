@@ -3,7 +3,7 @@ use std::{collections::HashMap, env};
 use async_std::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{cache_handlers::CacheHandler, song::Song, Ytmrs};
+use crate::{cache_handlers::CacheHandler, song::Song};
 
 type SongID = String;
 
@@ -15,15 +15,32 @@ pub struct YTMRSettings {
     pub volume: f32,
 }
 
+impl YTMRSettings {
+    pub fn validate(self) -> Self {
+        Self {
+            saved_songs: self.saved_songs,
+            index: match self.index.validate_paths() {
+                Some(new_idx) => new_idx,
+                None => self.index,
+            },
+            queue: self.queue,
+            volume: self.volume,
+        }
+    }
+}
+
 impl Default for YTMRSettings {
     fn default() -> Self {
+        let index = CacheHandler::new({
+            let mut dir = env::current_dir().unwrap();
+            dir.push("cache");
+            dir
+        });
+
         Self {
             saved_songs: HashMap::new(),
-            index: CacheHandler::new({
-                let mut dir = env::current_dir().unwrap();
-                dir.push("cache");
-                dir
-            }),
+            // Check if all generated paths exist, prune nonexisting ones
+            index,
             queue: vec![],
             volume: 1.0,
         }
@@ -68,7 +85,9 @@ impl YTMRSettings {
             .await
             .map_err(|_| LoadError::File)?;
 
-        serde_json::from_str(&contents).map_err(|_| LoadError::Format)
+        let settings: YTMRSettings =
+            serde_json::from_str(&contents).map_err(|_| LoadError::Format)?;
+        Ok(settings.validate())
     }
 
     pub async fn save(self) -> Result<std::path::PathBuf, SaveError> {

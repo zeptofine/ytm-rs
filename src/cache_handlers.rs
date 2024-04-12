@@ -1,29 +1,31 @@
+use std::path::Path;
 use std::{collections::HashMap, path::PathBuf};
 
-use once_cell::sync::Lazy;
+use serde::ser::SerializeMap;
 use serde::{
     de::{MapAccess, Visitor},
     Deserialize, Serialize,
 };
-use serde::{ser::SerializeMap, Deserializer, Serializer};
 use uuid::Uuid;
+
+// use once_cell::sync::Lazy;
+// use serde::{Deserializer, Serializer};
 
 fn generate_id() -> String {
     Uuid::new_v4().to_string()
 }
 
 pub trait YtmCache {
-    fn get_thumbnail_path(&mut self) -> PathBuf;
-
-    fn get_song_path(&mut self) -> PathBuf;
+    fn ensure_thumbnail(&mut self) -> PathBuf;
+    fn ensure_song(&mut self) -> PathBuf;
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct CacheHandleItem {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub thumbnail_path: Option<PathBuf>, // thumbnail path
+    thumbnail_path: Option<PathBuf>, // thumbnail path
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub song_path: Option<PathBuf>, // song path
+    song_path: Option<PathBuf>, // song path
 }
 
 impl CacheHandleItem {
@@ -33,10 +35,22 @@ impl CacheHandleItem {
             song_path: None,
         }
     }
+    fn get_thumbnail(&self, source: &Path) -> Option<PathBuf> {
+        let mut pth = source.to_path_buf();
+        pth.push(self.thumbnail_path.clone()?);
+        pth.set_extension("jpg");
+        Some(pth)
+    }
+    fn get_song(&self, source: &Path) -> Option<PathBuf> {
+        let mut pth = source.to_path_buf();
+        pth.push(self.song_path.clone()?);
+        pth.set_extension("mp3");
+        Some(pth)
+    }
 }
 
 impl YtmCache for CacheHandleItem {
-    fn get_thumbnail_path(&mut self) -> PathBuf {
+    fn ensure_thumbnail(&mut self) -> PathBuf {
         if self.thumbnail_path.is_none() {
             self.thumbnail_path = Some(PathBuf::from(generate_id()));
         }
@@ -44,7 +58,7 @@ impl YtmCache for CacheHandleItem {
         self.thumbnail_path.clone().unwrap()
     }
 
-    fn get_song_path(&mut self) -> PathBuf {
+    fn ensure_song(&mut self) -> PathBuf {
         if self.song_path.is_none() {
             self.song_path = Some(PathBuf::from(generate_id()));
         }
@@ -57,14 +71,12 @@ pub struct CacheHandle<'a> {
 }
 
 impl YtmCache for CacheHandle<'_> {
-    fn get_thumbnail_path(&mut self) -> PathBuf {
-        let mut pth = self.source.clone();
-        pth.push(self.item.get_thumbnail_path());
-        pth.set_extension("jpg");
-        pth
+    fn ensure_thumbnail(&mut self) -> PathBuf {
+        self.item.ensure_thumbnail();
+        self.item.get_thumbnail(&self.source).unwrap()
     }
 
-    fn get_song_path(&mut self) -> PathBuf {
+    fn ensure_song(&mut self) -> PathBuf {
         todo!()
     }
 }
@@ -93,6 +105,50 @@ impl CacheHandler {
         CacheHandle {
             source: self.source.clone(),
             item: self.map.0.get_mut(key).unwrap(),
+        }
+    }
+
+    pub fn validate_paths(&self) -> Option<Self> {
+        let unfinished: HashMap<String, CacheHandleItem> = self
+            .map
+            .0
+            .iter()
+            .filter_map(|(k, item)| {
+                if item.thumbnail_path.is_none() && item.song_path.is_none() {
+                    return None;
+                }
+
+                let exists_thumb = item.get_thumbnail(&self.source).filter(|p| p.exists());
+                let exists_song = item.get_song(&self.source).filter(|p| p.exists());
+                println!["{item:?}"];
+                println!["{exists_thumb:?}, {exists_song:?}"];
+
+                match (item.thumbnail_path.is_some() == exists_thumb.is_some())
+                    && (item.song_path.is_some() == exists_song.is_some())
+                {
+                    true => None,
+                    false => Some((
+                        k.clone(),
+                        CacheHandleItem {
+                            thumbnail_path: item.thumbnail_path.clone().and(exists_thumb),
+                            song_path: item.song_path.clone().and(exists_song),
+                        },
+                    )),
+                }
+            })
+            .collect();
+
+        if unfinished.is_empty() {
+            None
+        } else {
+            println!["Fixing {} cache items", unfinished.len()];
+            println!["{:#?}", unfinished];
+            let mut new_map = self.map.clone();
+            new_map.0.extend(unfinished);
+            Some(Self {
+                source: self.source.clone(),
+                map: new_map,
+            })
         }
     }
 }

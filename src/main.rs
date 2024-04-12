@@ -1,29 +1,14 @@
-#![allow(unused_imports)]
-
-// use std::time::Duration;
-
 use std::fmt::Debug;
-use std::fs::File;
-use std::io::BufReader;
-use std::time::Duration;
 
-// use iced_aw::{color_picker, number_input};
+use iced::widget::{button, column, container, scrollable, text, text_input};
 use iced::{
-    alignment::{Alignment, Horizontal, Vertical},
-    keyboard,
-    widget::{
-        button, checkbox, column, container, keyed_column, progress_bar, radio, row, scrollable,
-        slider, text, text_input, Column, Text,
-    },
-    Command as Cm, Element, Length, Subscription,
+    alignment::{Alignment, Horizontal},
+    keyboard, Command as Cm, Element, Length, Subscription,
 };
 use once_cell::sync::Lazy;
 use reqwest::Url;
-use rodio::{
-    source::{SineWave, Source},
-    OutputStreamHandle,
-};
-use rodio::{Decoder, OutputStream, Sink};
+use rodio::OutputStreamHandle;
+use rodio::{OutputStream, Sink};
 use serde::Serialize;
 
 mod cache_handlers;
@@ -31,9 +16,19 @@ mod response_types;
 mod settings;
 mod song;
 mod thumbnails;
-use response_types::{YTResponseError, YTResponseType, YTSong};
-use settings::{LoadError, SaveError, YTMRSettings};
-use song::{Song, SongMessage};
+
+use crate::{
+    response_types::{YTResponseError, YTResponseType, YTSong},
+    settings::{LoadError, SaveError, YTMRSettings},
+    song::{Song, SongMessage},
+};
+
+// use iced_aw::{color_picker, number_input};
+// use iced::{
+//     alignment::Vertical,
+//     widget::{checkbox, keyed_column, progress_bar, radio, row, slider, Column, Text},
+// };
+// use rodio::{source::Source, Decoder};
 
 static INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 
@@ -320,7 +315,7 @@ enum YTMRSMessage {
 impl Ytmrs {
     fn load() -> Cm<YTMRSMessage> {
         Cm::perform(YTMRSettings::load(), |s| {
-            println!["Loaded: {s:?}"];
+            // println!["Loaded: {s:?}"];
             YTMRSMessage::Loaded(s)
         })
     }
@@ -354,22 +349,24 @@ impl Ytmrs {
     fn update(&mut self, message: YTMRSMessage) -> Cm<YTMRSMessage> {
         match self {
             Self::Loading => match message {
-                YTMRSMessage::Loaded(Ok(state)) => {
-                    let mut main = Main::new(state);
-                    let commands = main.load();
-                    *self = Self::Loaded {
-                        state: main,
-                        saving: false,
-                    };
-                    commands.map(YTMRSMessage::MainMessage)
-                }
-                YTMRSMessage::Loaded(Err(_)) => {
-                    *self = Self::Loaded {
-                        state: Main::default(),
-                        saving: false,
-                    };
-                    Cm::none()
-                }
+                YTMRSMessage::Loaded(o) => match o {
+                    Ok(state) => {
+                        let mut main = Main::new(state);
+                        let commands = main.load();
+                        *self = Self::Loaded {
+                            state: main,
+                            saving: false,
+                        };
+                        commands.map(YTMRSMessage::MainMessage)
+                    }
+                    Err(_) => {
+                        *self = Self::Loaded {
+                            state: Main::default(),
+                            saving: false,
+                        };
+                        Cm::none()
+                    }
+                },
                 _ => Cm::none(),
             },
             Self::Loaded { state, saving: _ } => match message {

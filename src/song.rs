@@ -1,23 +1,25 @@
-use std::path::PathBuf;
-
-use chrono::Duration;
 use iced::{
-    alignment::{Horizontal, Vertical},
-    widget::{
-        button, column, horizontal_space,
-        image::{self as icyimg, Handle},
-        row, text, vertical_space, Image, Space,
-    },
-    Alignment, Command as Cm, Element, Length,
+    alignment::Vertical,
+    widget::{button, column, row, text, Image},
+    Command as Cm, Element, Length,
 };
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
     cache_handlers::{CacheHandle, YtmCache as _},
-    response_types::{UrlString, YTSong},
+    response_types::YTSong,
     thumbnails::{get_thumbnail, ThumbnailState},
 };
+
+// use chrono::Duration;
+// use std::path::PathBuf;
+// use iced::{
+//     alignment::Horizontal,
+//     widget::{image::Handle, vertical_space, Space},
+//     Alignment,
+// };
+// use crate::response_types::UrlString;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Song {
@@ -36,28 +38,15 @@ impl Song {
     }
 
     pub fn load(&self, handle: &mut CacheHandle) -> Cm<SongMessage> {
-        let thumbnail_path = handle.get_thumbnail_path();
         Cm::batch([match &self.thumbnail {
             ThumbnailState::Unknown => Cm::perform(
-                get_thumbnail(self.data.thumbnail.clone(), thumbnail_path),
+                get_thumbnail(self.data.thumbnail.clone(), handle.ensure_thumbnail()),
                 |r| match r {
                     Err(_) => SongMessage::ThumnailGatherFailure,
                     Ok(state) => SongMessage::ThumbnailGathered(state),
                 },
             ),
-            _ => Cm::none(), // ThumbnailState::Downloaded {
-                             //     path: _,
-                             //     handle: _,
-                             //     colors: _,
-                             // } => Cm::perform(
-                             //     async {
-                             //         let mut mp = thumbnail_path.clone();
-                             //         mp.push("_mat");
-
-                             //         (thumbnail_path, mp)
-                             //     },
-                             //     |(p, m)| SongMessage::ThumbnailGathered(p, m),
-                             // ),
+            _ => Cm::none(),
         }])
     }
 
