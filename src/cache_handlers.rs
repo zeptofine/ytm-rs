@@ -8,6 +8,8 @@ use serde::{
 };
 use uuid::Uuid;
 
+use crate::IDKey;
+
 // use once_cell::sync::Lazy;
 // use serde::{Deserializer, Serializer};
 
@@ -152,7 +154,7 @@ impl CacheHandler {
 }
 
 #[derive(Debug, Clone)]
-struct CacheMapper(HashMap<String, CacheHandleItem>);
+struct CacheMapper(HashMap<IDKey, CacheHandleItem>);
 
 impl CacheMapper {
     pub fn new() -> Self {

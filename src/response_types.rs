@@ -3,6 +3,7 @@ use std::borrow::Borrow;
 use serde::{Deserialize, Serialize};
 
 pub type UrlString = String;
+pub type IDKey = String;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Thumbnail {
@@ -13,8 +14,8 @@ pub struct Thumbnail {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTabEntry {
-    pub id: String,
-    pub url: String,
+    pub id: IDKey,
+    pub url: UrlString,
     pub title: String,
     pub description: Option<String>,
     pub duration: f32,
@@ -26,7 +27,7 @@ pub struct YTabEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTab {
-    pub id: String,
+    pub id: IDKey,
     pub title: String,
     pub channel: Option<String>,
     pub view_count: Option<usize>,
@@ -39,7 +40,7 @@ pub struct YTab {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTSong {
-    pub id: String,
+    pub id: IDKey,
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -67,8 +68,8 @@ pub enum YTIEKey {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTSearchEntry {
+    pub id: IDKey,
     pub title: Option<String>,
-    pub id: String,
     pub ie_key: YTIEKey,
     pub url: UrlString,
 }
