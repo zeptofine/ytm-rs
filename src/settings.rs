@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env};
+use std::{collections::HashMap, env, path::PathBuf};
 
 use async_std::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -8,15 +8,26 @@ use crate::{cache_handlers::CacheHandler, song::Song};
 type SongID = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YTMRUserSettings {
+    pub volume: f32,
+}
+
+impl Default for YTMRUserSettings {
+    fn default() -> Self {
+        Self { volume: 1.0 }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTMRSettings {
     pub saved_songs: HashMap<SongID, Song>,
     pub index: CacheHandler,
     pub queue: Vec<SongID>,
-    pub volume: f32,
+    pub user_settings: YTMRUserSettings,
 }
 
 impl YTMRSettings {
-    pub fn validate(self) -> Self {
+    fn validate(self) -> Self {
         Self {
             saved_songs: self.saved_songs,
             index: match self.index.validate_paths() {
@@ -24,7 +35,7 @@ impl YTMRSettings {
                 None => self.index,
             },
             queue: self.queue,
-            volume: self.volume,
+            user_settings: self.user_settings,
         }
     }
 }
@@ -42,7 +53,7 @@ impl Default for YTMRSettings {
             // Check if all generated paths exist, prune nonexisting ones
             index,
             queue: vec![],
-            volume: 1.0,
+            user_settings: YTMRUserSettings::default(),
         }
     }
 }
@@ -61,7 +72,7 @@ pub enum SaveError {
 }
 
 impl YTMRSettings {
-    pub fn path() -> std::path::PathBuf {
+    pub fn path() -> PathBuf {
         let mut path = if let Some(project_dirs) =
             directories_next::ProjectDirs::from("rs", "zeptofine", "ytm-rs")
         {
@@ -73,24 +84,25 @@ impl YTMRSettings {
         path
     }
 
-    pub async fn load() -> Result<YTMRSettings, LoadError> {
+    pub async fn load_default() -> Result<YTMRSettings, LoadError> {
+        Self::load(Self::path()).await
+    }
+
+    pub async fn load(path: PathBuf) -> Result<YTMRSettings, LoadError> {
         let mut contents = String::new();
-        let pth = Self::path();
-        println!["Reading: {pth:?}"];
-        let mut file = async_std::fs::File::open(pth)
+        println!["Reading: {path:?}"];
+        let mut file = async_std::fs::File::open(path)
             .await
             .map_err(|_| LoadError::File)?;
-
         file.read_to_string(&mut contents)
             .await
             .map_err(|_| LoadError::File)?;
-
         let settings: YTMRSettings =
             serde_json::from_str(&contents).map_err(|_| LoadError::Format)?;
         Ok(settings.validate())
     }
 
-    pub async fn save(self) -> Result<std::path::PathBuf, SaveError> {
+    pub async fn save(self) -> Result<PathBuf, SaveError> {
         let json = serde_json::to_string_pretty(&self).map_err(|_| SaveError::Format)?;
         let path = Self::path();
         if let Some(dir) = path.parent() {

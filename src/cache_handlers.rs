@@ -99,15 +99,16 @@ impl CacheHandler {
     }
 
     pub fn get(&mut self, key: &str) -> CacheHandle {
-        if !self.map.0.contains_key(key) {
-            self.map.0.insert(key.to_string(), CacheHandleItem::new());
-        }
+        let item = self
+            .map
+            .0
+            .entry(key.to_string())
+            .or_insert_with(CacheHandleItem::new);
         CacheHandle {
             source: self.source.clone(),
-            item: self.map.0.get_mut(key).unwrap(),
+            item,
         }
     }
-
     pub fn validate_paths(&self) -> Option<Self> {
         let unfinished: HashMap<String, CacheHandleItem> = self
             .map

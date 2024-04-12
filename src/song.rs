@@ -95,20 +95,11 @@ impl Song {
     }
 
     pub fn update(&mut self, msg: SongMessage) -> Cm<SongMessage> {
-        match msg {
-            SongMessage::Clicked => {
-                println!["Song was clicked"];
-                Cm::none()
-            }
-            SongMessage::ThumbnailGathered(state) => {
-                self.thumbnail = state;
-                Cm::none()
-            }
-            SongMessage::ThumnailGatherFailure => {
-                println!["Failed to gather thumbnail"];
-                Cm::none()
-            }
-        }
+        if let SongMessage::ThumbnailGathered(state) = msg {
+            self.thumbnail = state;
+        };
+
+        Cm::none()
     }
 }
 

@@ -5348,6 +5348,7 @@ dependencies = [
  "directories-next",
  "iced",
  "image 0.25.0",
+ "itertools",
  "material-colors",
  "once_cell",
  "reqwest 0.12.2",

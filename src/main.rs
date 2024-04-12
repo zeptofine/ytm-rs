@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::path::PathBuf;
 
 use iced::widget::{button, column, container, scrollable, text, text_input};
 use iced::{
@@ -15,6 +16,7 @@ mod cache_handlers;
 mod response_types;
 mod settings;
 mod song;
+mod song_operations;
 mod thumbnails;
 
 use crate::{
@@ -155,12 +157,6 @@ impl Main {
                     .align_x(Horizontal::Center)
             ),
         ]
-        // .push(row![slider(
-        //     0.0..=100.0,
-        //     self.settings.volume * 100.0,
-        //     MainMsg::VolumeChanged
-        // )
-        // .height(20)])
         .align_items(Alignment::Center)
         .spacing(20)
         .padding(10)
@@ -308,16 +304,13 @@ enum Ytmrs {
 enum YTMRSMessage {
     Loaded(Result<YTMRSettings, LoadError>),
     Save,
-    Saved(Result<std::path::PathBuf, SaveError>),
+    Saved(Result<PathBuf, SaveError>),
     MainMessage(MainMsg),
 }
 
 impl Ytmrs {
     fn load() -> Cm<YTMRSMessage> {
-        Cm::perform(YTMRSettings::load(), |s| {
-            // println!["Loaded: {s:?}"];
-            YTMRSMessage::Loaded(s)
-        })
+        Cm::perform(YTMRSettings::load_default(), YTMRSMessage::Loaded)
     }
 
     fn subscription(&self) -> Subscription<YTMRSMessage> {
@@ -409,9 +402,6 @@ impl Ytmrs {
 }
 
 pub fn main() -> iced::Result {
-    // let response =
-    //     reqwest::blocking::get("http:/localhost:55001").expect("Failed to get a response");
-
     iced::program("A cool song list", Ytmrs::update, Ytmrs::view)
         .load(Ytmrs::load)
         .subscription(Ytmrs::subscription)
