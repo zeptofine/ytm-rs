@@ -1,5 +1,6 @@
-use std::iter;
+use std::iter::{self, once};
 
+use rand::{seq::index::sample, seq::SliceRandom, thread_rng};
 use serde::{Deserialize, Serialize};
 
 use crate::song::Song;
@@ -35,24 +36,28 @@ impl IntoIterator for SongOp {
 
     fn into_iter(self) -> Self::IntoIter {
         match self {
-            Self::SinglePlay(song) => Box::new(iter::once(song)),
-            Self::PlayOnce(ops) => Box::new(ops.into_iter().flat_map(|op| op.into_iter())),
-            Self::LoopNTimes(ops, n) => Box::new(
-                iter::repeat_with(move || ops.clone().into_iter().flat_map(|op| op.into_iter()))
-                    .take(n as usize)
-                    .flatten(),
+            Self::SinglePlay(song) => Box::new(once(song)),
+            Self::PlayOnce(ops) => Box::new(ops.into_iter().flatten()),
+            Self::LoopNTimes(ops, n) => {
+                let length = ops.len();
+                Box::new(ops.into_iter().cycle().take(length * n as usize).flatten())
+            }
+            Self::Stretch(ops, n) => Box::new(
+                ops.into_iter()
+                    .flat_map(move |op| iter::repeat(op).take(n as usize).flatten()),
             ),
-            Self::Stretch(ops, n) => Box::new(ops.into_iter().flat_map(move |op| {
-                iter::repeat_with(move || op.clone().into_iter())
-                    .take(n as usize)
-                    .flatten()
-            })),
-            Self::InfiniteLoop(ops) => Box::new(
-                iter::repeat_with(move || ops.clone().into_iter().flat_map(|op| op.into_iter()))
-                    .flatten(),
-            ),
-
-            _ => todo!(),
+            Self::InfiniteLoop(ops) => Box::new(ops.into_iter().cycle().flatten()),
+            Self::RandomPlay(ops) => {
+                let length = ops.len();
+                Box::new(
+                    sample(&mut thread_rng(), length, length)
+                        .into_iter()
+                        .flat_map(move |idx| ops[idx].clone()),
+                )
+            }
+            Self::InfiniteRandom(ops) => Box::new({
+                iter::repeat(ops).flat_map(|ops| ops.choose(&mut thread_rng()).unwrap().clone())
+            }),
         }
     }
 }
