@@ -120,9 +120,6 @@ impl CacheHandler {
 
                 let exists_thumb = item.get_thumbnail(&self.source).filter(|p| p.exists());
                 let exists_song = item.get_song(&self.source).filter(|p| p.exists());
-                println!["{item:?}"];
-                println!["{exists_thumb:?}, {exists_song:?}"];
-
                 match (item.thumbnail_path.is_some() == exists_thumb.is_some())
                     && (item.song_path.is_some() == exists_song.is_some())
                 {
