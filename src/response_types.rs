@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 pub type UrlString = String;
 pub type IDKey = String;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Thumbnail {
     pub height: u16,
     pub width: u16,

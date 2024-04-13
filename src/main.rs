@@ -1,301 +1,30 @@
 use std::fmt::Debug;
 use std::path::PathBuf;
 
-use iced::widget::{button, column, container, scrollable, text, text_input};
-use iced::{
-    alignment::{Alignment, Horizontal},
-    keyboard, Command as Cm, Element, Length, Subscription,
-};
-use once_cell::sync::Lazy;
-use reqwest::Url;
-use rodio::OutputStreamHandle;
-use rodio::{OutputStream, Sink};
-use serde::Serialize;
+use iced::widget::{button, column, container, text};
+use iced::{alignment::Horizontal, keyboard, Command as Cm, Element, Length, Subscription};
+use ytmrs::{Ytmrs, YtmrsMsg};
 
+mod background_canvas;
 mod cache_handlers;
 mod response_types;
 mod settings;
 mod song;
 mod song_operations;
 mod thumbnails;
+mod ytmrs;
 
 use crate::{
-    response_types::{IDKey, YTResponseError, YTResponseType, YTSong},
+    response_types::IDKey,
     settings::{LoadError, SaveError, YTMRSettings},
-    song::{Song, SongMessage},
 };
 
-// use iced_aw::{color_picker, number_input};
-// use iced::{
-//     alignment::Vertical,
-//     widget::{checkbox, keyed_column, progress_bar, radio, row, slider, Column, Text},
-// };
-// use rodio::{source::Source, Decoder};
-
-static INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
-
-#[derive(Debug, Default)]
-struct UserInputs {
-    url: String,
-}
-
-#[derive(Debug, Clone)]
-enum InputMessage {
-    UrlChanged(String),
-}
-
-impl UserInputs {
-    fn view(&self) -> Element<InputMessage> {
-        column![text_input("Youtube URL...", &self.url)
-            .id(INPUT_ID.clone())
-            .on_input(InputMessage::UrlChanged)
-            .size(20)
-            .padding(15),]
-        .into()
-    }
-
-    fn update(&mut self, message: InputMessage) -> Cm<InputMessage> {
-        match message {
-            InputMessage::UrlChanged(s) => self.url = s,
-        }
-        Cm::none()
-    }
-}
-
-struct YTMRSAudioManager {
-    _stream: OutputStream,
-    _handle: OutputStreamHandle,
-    _sink: Sink,
-}
-
-impl Debug for YTMRSAudioManager {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("YTMRSAudioManager")
-    }
-}
-
-impl Default for YTMRSAudioManager {
-    fn default() -> Self {
-        let (stream, handle) = OutputStream::try_default().unwrap();
-        let sink = Sink::try_new(&handle).unwrap();
-        Self {
-            _stream: stream,
-            _handle: handle,
-            _sink: sink,
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-struct Main {
-    inputs: UserInputs,
-    // audio_manager: YTMRSAudioManager,
-    settings: YTMRSettings,
-}
-
-#[derive(Debug, Clone)]
-enum MainMsg {
-    SongMessage(String, SongMessage),
-    InputMessage(InputMessage),
-    SearchUrl,
-
-    RequestRecieved(RequestResult),
-    RequestParsed(YTResponseType),
-    RequestParseFailure(YTResponseError),
-}
-
-#[derive(Debug, Clone)]
-enum RequestResult {
-    Success(String),
-    RequestError,
-    JsonParseError,
-}
-
-impl Main {
-    fn new(settings: YTMRSettings) -> Self {
-        Self {
-            settings,
-            ..Self::default()
-        }
-    }
-
-    fn load(&mut self) -> Cm<MainMsg> {
-        let mut commands = vec![];
-        for key in self.settings.queue.clone() {
-            if let Some(song) = self.settings.saved_songs.get(&key) {
-                commands.push(
-                    song.load(&mut self.settings.index.get(&key))
-                        .map(move |msg| MainMsg::SongMessage(key.clone(), msg)),
-                )
-            }
-        }
-
-        Cm::batch(commands)
-    }
-
-    fn prepare_to_save(&mut self) {}
-
-    fn subscription(&self) -> Subscription<MainMsg> {
-        Subscription::none()
-    }
-
-    fn view(&self) -> Element<MainMsg> {
-        let input = self.inputs.view();
-        let songs: Element<_> = column(self.settings.queue.iter().map(|song| {
-            self.settings.saved_songs[song]
-                .view()
-                .map(move |message| MainMsg::SongMessage(song.clone(), message))
-        }))
-        .into();
-        column![
-            input.map(MainMsg::InputMessage),
-            button("Generate").on_press(MainMsg::SearchUrl),
-            scrollable(
-                container(songs)
-                    .width(Length::Fill)
-                    .padding(10)
-                    .align_x(Horizontal::Center)
-            ),
-        ]
-        .align_items(Alignment::Center)
-        .spacing(20)
-        .padding(10)
-        .into()
-    }
-
-    fn update(&mut self, message: MainMsg) -> Cm<MainMsg> {
-        match message {
-            MainMsg::SongMessage(key, msg) => self
-                .settings
-                .saved_songs
-                .get_mut(&key)
-                .unwrap()
-                .update(msg)
-                .map(move |msg| MainMsg::SongMessage(key.clone(), msg)),
-            MainMsg::InputMessage(i) => self.inputs.update(i).map(MainMsg::InputMessage),
-            MainMsg::SearchUrl => {
-                // Check if URL is valid
-                match Url::parse(&self.inputs.url) {
-                    Ok(_) => Cm::perform(
-                        Main::request_info(self.inputs.url.clone()),
-                        MainMsg::RequestRecieved,
-                    ),
-
-                    Err(e) => {
-                        println!["Failed to parse: {e}"];
-                        Cm::none()
-                    }
-                }
-            }
-            MainMsg::RequestRecieved(response) => match response {
-                RequestResult::Success(s) => {
-                    Cm::perform(Main::parse_request(s), |result| match result {
-                        Ok(r) => MainMsg::RequestParsed(r),
-                        Err(e) => MainMsg::RequestParseFailure(e),
-                    })
-                }
-                _ => {
-                    println!["{:?}", response];
-                    Cm::none()
-                }
-            },
-            MainMsg::RequestParsed(response_type) => match response_type {
-                YTResponseType::Song(song) => {
-                    println!["Request is a song"];
-                    let id = song.id.clone();
-                    self.add_ytsong(song)
-                        .map(move |msg| MainMsg::SongMessage(id.clone(), msg))
-                }
-                YTResponseType::Tab(t) => {
-                    println!["Request is a 'tab'"];
-                    self.settings.queue.clear();
-
-                    Cm::batch(t.entries.iter().map(|entry| {
-                        let id = entry.id.clone();
-                        let song = YTSong {
-                            id: entry.id.clone(),
-                            title: entry.title.clone(),
-                            description: None,
-                            channel: entry.channel.clone(),
-                            view_count: entry.view_count,
-                            thumbnail: entry.thumbnails[0].url.clone(),
-                            album: None,
-                            webpage_url: entry.url.clone(),
-                            duration: entry.duration,
-                            artists: Some(vec![entry.channel.clone()]),
-                            tags: vec![],
-                        };
-                        self.add_ytsong(song)
-                            .map(move |msg| MainMsg::SongMessage(id.clone(), msg))
-                    }))
-                }
-                YTResponseType::Search(_s) => {
-                    println!["Request is a search"];
-                    Cm::none()
-                }
-            },
-            MainMsg::RequestParseFailure(e) => {
-                println!["{:?}", e];
-                Cm::none()
-            }
-        }
-    }
-
-    fn add_ytsong(&mut self, song: YTSong) -> Cm<SongMessage> {
-        let s = Song::new(song.clone());
-        let id = s.data.id.clone();
-        if !self.settings.saved_songs.contains_key(&id) {
-            self.settings.saved_songs.insert(id.clone(), s);
-        }
-        self.settings.queue.push(id.clone());
-        self.settings
-            .saved_songs
-            .get(&id)
-            .unwrap()
-            .load(&mut self.settings.index.get(&id))
-    }
-
-    async fn parse_request(response: String) -> Result<YTResponseType, YTResponseError> {
-        YTResponseType::new(response)
-    }
-
-    async fn request_info(url: String) -> RequestResult {
-        println!["Requesting info for {}", url];
-        let client = reqwest::Client::new();
-
-        match client
-            .post("http://127.0.0.1:55001/request_info")
-            .json(&RequestInfoDict {
-                url,
-                process: false,
-            })
-            .send()
-            .await
-        {
-            Err(e) => {
-                println!["{e:?}"];
-                RequestResult::RequestError
-            }
-            Ok(r) => match r.text().await {
-                Err(_) => RequestResult::JsonParseError,
-                Ok(j) => RequestResult::Success(j),
-            },
-        }
-    }
-}
-
-#[derive(Serialize)]
-struct RequestInfoDict {
-    url: String,
-    process: bool,
-}
-
 #[derive(Default, Debug)]
-enum Ytmrs {
+enum Main {
     #[default]
     Loading,
     Loaded {
-        state: Main,
+        state: Ytmrs,
         saving: bool,
     },
 }
@@ -305,10 +34,10 @@ enum YTMRSMessage {
     Loaded(Result<YTMRSettings, LoadError>),
     Save,
     Saved(Result<PathBuf, SaveError>),
-    MainMessage(MainMsg),
+    MainMessage(YtmrsMsg),
 }
 
-impl Ytmrs {
+impl Main {
     fn load() -> Cm<YTMRSMessage> {
         Cm::perform(YTMRSettings::load_default(), YTMRSMessage::Loaded)
     }
@@ -316,10 +45,16 @@ impl Ytmrs {
     fn subscription(&self) -> Subscription<YTMRSMessage> {
         Subscription::batch([
             keyboard::on_key_press(|key_code, modifiers| {
+                println!["{:#?} {:#?}", key_code, modifiers];
                 if !(modifiers.command()) {
                     return None;
                 }
                 Self::handle_hotkey(key_code, modifiers)
+            }),
+            keyboard::on_key_release(|kcode, modifiers| {
+                println!["{:#?} {:#?}", kcode, modifiers];
+
+                None
             }),
             match self {
                 Self::Loaded { state, saving: _ } => {
@@ -344,7 +79,7 @@ impl Ytmrs {
             Self::Loading => match message {
                 YTMRSMessage::Loaded(o) => match o {
                     Ok(state) => {
-                        let mut main = Main::new(state);
+                        let mut main = Ytmrs::new(state);
                         let commands = main.load();
                         *self = Self::Loaded {
                             state: main,
@@ -354,7 +89,7 @@ impl Ytmrs {
                     }
                     Err(_) => {
                         *self = Self::Loaded {
-                            state: Main::default(),
+                            state: Ytmrs::default(),
                             saving: false,
                         };
                         Cm::none()
@@ -402,9 +137,10 @@ impl Ytmrs {
 }
 
 pub fn main() -> iced::Result {
-    iced::program("A cool song list", Ytmrs::update, Ytmrs::view)
-        .load(Ytmrs::load)
-        .subscription(Ytmrs::subscription)
+    iced::program("A cool song list", Main::update, Main::view)
+        .load(Main::load)
+        .subscription(Main::subscription)
+        .antialiasing(true)
         .run()
 }
 

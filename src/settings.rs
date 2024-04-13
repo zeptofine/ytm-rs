@@ -50,7 +50,6 @@ impl Default for YTMRSettings {
 
         Self {
             saved_songs: HashMap::new(),
-            // Check if all generated paths exist, prune nonexisting ones
             index,
             queue: vec![],
             user_settings: YTMRUserSettings::default(),
@@ -94,6 +93,7 @@ impl YTMRSettings {
         let mut file = async_std::fs::File::open(path)
             .await
             .map_err(|_| LoadError::File)?;
+
         file.read_to_string(&mut contents)
             .await
             .map_err(|_| LoadError::File)?;

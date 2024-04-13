@@ -12,7 +12,6 @@ use crate::{
     thumbnails::{get_thumbnail, ThumbnailState},
 };
 
-// use chrono::Duration;
 // use std::path::PathBuf;
 // use iced::{
 //     alignment::Horizontal,

@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 async-std = "1.12.0"
-chrono = "0.4.35"
 directories-next = "2.0.0"
 # iced_aw = { version = "0.8.0", features = [
 #     "color_picker",
@@ -33,4 +32,5 @@ features = ["serde", "image"]
 [dependencies.iced]
 git = "https://github.com/iced-rs/iced.git"
 rev = "cdb18e610a72b4a025d7e1890140393adee5b087"
-features = ["debug", "lazy", "tokio", "image", "canvas"]
+# default-features = false
+features = ["debug", "lazy", "tokio", "image", "canvas", "advanced"]

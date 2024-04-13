@@ -1,12 +1,9 @@
-use std::{
-    iter::{self, once},
-    str::FromStr,
-};
+use std::iter::{once, repeat};
 
 use rand::{seq::index::sample, seq::SliceRandom, thread_rng};
 use serde::{Deserialize, Serialize};
 
-use crate::{response_types::IDKey, song::Song};
+use crate::response_types::IDKey;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum InfLoopType {
@@ -49,7 +46,7 @@ impl IntoIterator for SongOp {
             }
             Self::Stretch(ops, n) => Box::new(
                 ops.into_iter()
-                    .flat_map(move |op| iter::repeat(op).take(n as usize).flatten()),
+                    .flat_map(move |op| repeat(op).take(n as usize).flatten()),
             ),
             Self::InfiniteLoop(ops) => Box::new(ops.into_iter().cycle().flatten()),
             Self::RandomPlay(ops) => {
@@ -65,7 +62,7 @@ impl IntoIterator for SongOp {
                 operation.clone().into_iter()
             }),
             Self::InfiniteRandom(ops) => Box::new({
-                iter::repeat(ops).flat_map(|ops| ops.choose(&mut thread_rng()).unwrap().clone())
+                repeat(ops).flat_map(|ops| ops.choose(&mut thread_rng()).unwrap().clone())
             }),
         }
     }
