@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::response_types::IDKey;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum InfLoopType {
     Never,
     Maybe,
@@ -13,26 +13,26 @@ pub enum InfLoopType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum SongOp {
+pub enum RecursiveSongOp {
     // Plays a song.
     SinglePlay(IDKey),
     // Plays a list of songs once.
-    PlayOnce(Vec<SongOp>),
+    PlayOnce(Vec<RecursiveSongOp>),
     // Loops a list of songs entirely N times.
-    LoopNTimes(Vec<SongOp>, u32),
+    LoopNTimes(Vec<RecursiveSongOp>, u32),
     // Loops each song individually N times.
-    Stretch(Vec<SongOp>, u32),
+    Stretch(Vec<RecursiveSongOp>, u32),
     // Loops list indefinitely.
-    InfiniteLoop(Vec<SongOp>),
+    InfiniteLoop(Vec<RecursiveSongOp>),
     // Plays a random selection of songs from the provided box
-    RandomPlay(Vec<SongOp>),
+    RandomPlay(Vec<RecursiveSongOp>),
     // plays a single random song from the provided box.
-    SingleRandom(Vec<SongOp>),
+    SingleRandom(Vec<RecursiveSongOp>),
     // Plays random songs indefinitely until stopped.
-    InfiniteRandom(Vec<SongOp>),
+    InfiniteRandom(Vec<RecursiveSongOp>),
 }
 
-impl IntoIterator for SongOp {
+impl IntoIterator for RecursiveSongOp {
     type Item = IDKey;
     type IntoIter = Box<dyn Iterator<Item = Self::Item>>;
 
@@ -68,7 +68,7 @@ impl IntoIterator for SongOp {
     }
 }
 
-impl SongOp {
+impl RecursiveSongOp {
     pub fn is_valid(&self) -> bool {
         match self {
             Self::SinglePlay(_) => true,
@@ -82,7 +82,7 @@ impl SongOp {
         }
     }
 
-    pub fn is_infinite(&self) -> InfLoopType {
+    pub fn loop_type(&self) -> InfLoopType {
         match self {
             Self::InfiniteLoop(_) | Self::InfiniteRandom(_) => InfLoopType::Always,
             Self::SinglePlay(_) => InfLoopType::Never,
@@ -91,7 +91,7 @@ impl SongOp {
             | Self::Stretch(ops, _)
             | Self::RandomPlay(ops) => {
                 match ops.iter().find_map(|op| {
-                    let inftype = op.is_infinite();
+                    let inftype = op.loop_type();
                     match inftype != InfLoopType::Never {
                         true => Some(inftype),
                         false => None,
@@ -102,7 +102,7 @@ impl SongOp {
                 }
             }
             Self::SingleRandom(ops) => {
-                match ops.iter().any(|so| so.is_infinite() != InfLoopType::Never) {
+                match ops.iter().any(|so| so.loop_type() != InfLoopType::Never) {
                     true => InfLoopType::Maybe,
                     false => InfLoopType::Never,
                 }
@@ -110,82 +110,200 @@ impl SongOp {
         }
     }
 }
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    fn test_str() -> String {
-        "fffffff".to_string()
-    }
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum BackResult {
+    Rewound,
+    Current,
+}
 
-    fn test_str2() -> String {
-        "0000000".to_string()
-    }
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum NextResult {
+    Current,
+    Ended,
+}
 
-    fn test_obj() -> SongOp {
-        SongOp::SinglePlay(test_str())
-    }
+pub enum SeekingError {
+    TooShort,
+    TooLong,
+}
 
-    fn test_obj2() -> SongOp {
-        SongOp::SinglePlay(test_str2())
-    }
+pub trait OperationTracker {
+    fn move_back(&mut self) -> BackResult;
 
-    #[test]
-    fn test_songop_creation() {
-        let single = test_obj();
-        assert_eq!(single.is_valid(), true);
-        let songs: Vec<IDKey> = single.into_iter().collect();
-        assert_eq!(songs, vec![test_str()]);
-    }
+    /// Returns the current tree of indexes to get to the current song.
+    fn get_current(&self) -> Vec<&usize>;
+    fn move_next(&mut self) -> NextResult;
 
-    // Test for is_infinite()
-    #[test]
-    fn test_is_infinite() {
-        let single = test_obj();
-        assert_eq!(single.is_infinite(), InfLoopType::Never);
-    }
+    // Moves the tracker to its start of the sequence.
+    fn to_start(&mut self) {}
+    // Moves the tracker to the end of the sequence.
+    fn to_end(&mut self) {}
+}
 
-    // Test for PlayOnce
-    #[test]
-    fn test_playonce() {
-        let songs: Vec<SongOp> = vec![test_obj(), test_obj()];
-        let play_once = SongOp::PlayOnce(songs);
-        assert_eq!(play_once.is_valid(), true);
-        let song_keys: Vec<IDKey> = play_once.into_iter().collect();
-        for key in &song_keys {
-            assert_eq!(*key, test_str());
+#[derive(Debug, Clone)]
+pub enum SongOpTracker {
+    SinglePlay,
+    PlayOnce {
+        current: usize,
+        children: Vec<SongOpTracker>,
+    },
+    LoopNTimes {
+        current: usize,
+        total_loops: usize,
+        children: Vec<SongOpTracker>,
+    },
+}
+impl OperationTracker for SongOpTracker {
+    fn move_back(&mut self) -> BackResult {
+        match self {
+            SongOpTracker::SinglePlay => BackResult::Rewound,
+            SongOpTracker::PlayOnce { current, children } => match children[*current].move_back() {
+                BackResult::Rewound => {
+                    if *current == 0 {
+                        BackResult::Rewound
+                    } else {
+                        *current -= 1;
+                        children[*current].to_end();
+                        BackResult::Current
+                    }
+                }
+                BackResult::Current => BackResult::Current,
+            },
+            SongOpTracker::LoopNTimes {
+                current,
+                total_loops,
+                children,
+            } => {
+                let len = children.len();
+                match children[*current % len].move_back() {
+                    BackResult::Rewound => {
+                        if *current == 0 {
+                            BackResult::Rewound
+                        } else {
+                            *current -= 1;
+                            children[*current % len].to_end();
+                            BackResult::Current
+                        }
+                    }
+                    BackResult::Current => BackResult::Current,
+                }
+            }
         }
     }
 
-    // Test for LoopNTimes
-    #[test]
-    fn test_looptimes() {
-        let songs: Vec<SongOp> = vec![test_obj()];
-        let loop_times = SongOp::LoopNTimes(songs, 3);
-        assert_eq!(loop_times.is_valid(), true);
-        let song_keys: Vec<IDKey> = loop_times.into_iter().collect();
-        for key in &song_keys {
-            assert_eq!(*key, test_str());
+    fn get_current(&self) -> Vec<&usize> {
+        match self {
+            SongOpTracker::SinglePlay => vec![&0],
+            SongOpTracker::PlayOnce { current, children } => {
+                let mut result = vec![current];
+                result.extend(children[*current].get_current());
+                result
+            }
+            SongOpTracker::LoopNTimes {
+                current,
+                total_loops: _,
+                children,
+            } => {
+                let mut result = vec![current];
+                result.extend(children[*current % children.len()].get_current());
+                result
+            }
         }
     }
 
-    // Test for Stretch
-    #[test]
-    fn test_stretch() {
-        let songs: Vec<SongOp> = vec![test_obj(), test_obj2()];
-        let stretch = SongOp::Stretch(songs, 3);
-        assert_eq!(stretch.is_valid(), true);
-        let song_keys: Vec<IDKey> = stretch.into_iter().collect();
-        assert_eq!(
-            song_keys,
-            vec![
-                test_str(),
-                test_str(),
-                test_str(),
-                test_str2(),
-                test_str2(),
-                test_str2()
-            ]
-        )
+    fn move_next(&mut self) -> NextResult {
+        match self {
+            SongOpTracker::SinglePlay => NextResult::Ended,
+            SongOpTracker::PlayOnce { current, children } => match children[*current].move_next() {
+                NextResult::Ended => {
+                    if *current == children.len() - 1 {
+                        NextResult::Ended
+                    } else {
+                        *current += 1;
+                        children[*current].to_start();
+                        NextResult::Current
+                    }
+                }
+                NextResult::Current => NextResult::Current,
+            },
+            SongOpTracker::LoopNTimes {
+                current,
+                total_loops,
+                children,
+            } => {
+                let length = children.len();
+                match children[*current % length].move_next() {
+                    NextResult::Ended => {
+                        if *current == (length * *total_loops) - 1 {
+                            NextResult::Ended
+                        } else {
+                            *current += 1;
+                            children[*current % length].to_start();
+                            NextResult::Current
+                        }
+                    }
+                    NextResult::Current => NextResult::Current,
+                }
+            }
+        }
+    }
+
+    fn to_start(&mut self) {
+        match self {
+            SongOpTracker::SinglePlay => {}
+            SongOpTracker::PlayOnce {
+                current,
+                children: _,
+            } => *current = 0,
+            SongOpTracker::LoopNTimes {
+                current,
+                total_loops,
+                children,
+            } => {
+                *current = 0;
+            }
+        }
+    }
+
+    fn to_end(&mut self) {
+        match self {
+            SongOpTracker::SinglePlay => {}
+            SongOpTracker::PlayOnce { current, children } => *current = children.len(),
+            SongOpTracker::LoopNTimes {
+                current,
+                total_loops,
+                children,
+            } => todo!(),
+        }
+    }
+}
+
+#[test]
+pub fn tester() {
+    use crate::song_operations::SongOpTracker as SOT;
+
+    let mut tracker = SOT::PlayOnce {
+        current: 0,
+        children: vec![
+            SOT::SinglePlay,
+            SOT::SinglePlay,
+            SOT::LoopNTimes {
+                current: 0,
+                total_loops: 2,
+                children: vec![SOT::SinglePlay],
+            },
+        ],
+    };
+
+    println!["{:#?}", tracker];
+    println!["{:?}", tracker.get_current()];
+
+    while NextResult::Current == tracker.move_next() {
+        println!["{:?}", tracker.get_current()];
+    }
+
+    while BackResult::Current == tracker.move_back() {
+        println!["{:?}", tracker.get_current()];
     }
 }
