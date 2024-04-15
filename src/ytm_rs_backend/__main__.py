@@ -1,9 +1,10 @@
-from typing import TypedDict
-from flask import Flask, request
-from yt_dlp import YoutubeDL
 from queue import Queue
 from threading import Thread
+from typing import TypedDict
+
 import orjson
+from flask import Flask, request
+from yt_dlp import YoutubeDL
 
 app = Flask(__name__)
 
