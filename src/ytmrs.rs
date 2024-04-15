@@ -13,7 +13,7 @@ use rodio::{OutputStream, Sink};
 use serde::Serialize;
 
 use crate::{
-    background_canvas::{BMessage, BackgroundGradient},
+    background::BackgroundGradient,
     response_types::{YTResponseError, YTResponseType, YTSong},
     settings::YTMRSettings,
     song::{Song, SongMessage},
@@ -91,7 +91,6 @@ pub struct Ytmrs {
 
 #[derive(Debug, Clone)]
 pub enum YtmrsMsg {
-    BackgroundMessage(BMessage),
     SongMessage(String, SongMessage),
     InputMessage(InputMessage),
     SearchUrl,
@@ -99,6 +98,7 @@ pub enum YtmrsMsg {
     RequestRecieved(RequestResult),
     RequestParsed(YTResponseType),
     RequestParseFailure(YTResponseError),
+    NewBackground(BackgroundGradient),
 }
 
 #[derive(Debug, Clone)]
@@ -145,8 +145,8 @@ impl Ytmrs {
         }))
         .padding(0)
         .into();
+
         column![
-            self.background.view().map(YtmrsMsg::BackgroundMessage),
             input.map(YtmrsMsg::InputMessage),
             button("Generate").on_press(YtmrsMsg::SearchUrl),
             scrollable(
@@ -164,13 +164,15 @@ impl Ytmrs {
 
     pub fn update(&mut self, message: YtmrsMsg) -> Cm<YtmrsMsg> {
         match message {
-            YtmrsMsg::SongMessage(key, msg) => self
-                .settings
-                .saved_songs
-                .get_mut(&key)
-                .unwrap()
-                .update(msg)
-                .map(move |msg| YtmrsMsg::SongMessage(key.clone(), msg)),
+            YtmrsMsg::SongMessage(key, msg) => {
+                let song = self.settings.saved_songs.get_mut(&key).unwrap();
+                match msg {
+                    SongMessage::Clicked => todo!(),
+                    _ => song
+                        .update(msg)
+                        .map(move |msg| YtmrsMsg::SongMessage(key.clone(), msg)),
+                }
+            }
             YtmrsMsg::InputMessage(i) => self.inputs.update(i).map(YtmrsMsg::InputMessage),
             YtmrsMsg::SearchUrl => {
                 // Check if URL is valid
@@ -237,7 +239,7 @@ impl Ytmrs {
                 println!["{:?}", e];
                 Cm::none()
             }
-            YtmrsMsg::BackgroundMessage(_) => todo!(),
+            YtmrsMsg::NewBackground(_) => Cm::none(),
         }
     }
 

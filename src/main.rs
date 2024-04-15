@@ -1,11 +1,16 @@
 use std::fmt::Debug;
 use std::path::PathBuf;
 
-use iced::widget::{button, column, container, text};
+use background::BackgroundGradient;
+use iced::Color;
 use iced::{alignment::Horizontal, keyboard, Command as Cm, Element, Length, Subscription};
+use iced::{
+    theme::{Palette, Theme},
+    widget::{button, column, container, text},
+};
 use ytmrs::{Ytmrs, YtmrsMsg};
 
-mod background_canvas;
+mod background;
 mod cache_handlers;
 mod response_types;
 mod settings;
@@ -24,8 +29,9 @@ enum Main {
     #[default]
     Loading,
     Loaded {
-        state: Ytmrs,
+        state: Box<Ytmrs>,
         saving: bool,
+        background: Option<BackgroundGradient>,
     },
 }
 
@@ -40,6 +46,32 @@ enum YTMRSMessage {
 impl Main {
     fn load() -> Cm<YTMRSMessage> {
         Cm::perform(YTMRSettings::load_default(), YTMRSMessage::Loaded)
+    }
+
+    fn theme(&self) -> Theme {
+        match self {
+            Main::Loading => Theme::default(),
+            Main::Loaded {
+                state: _,
+                saving,
+                background: _,
+            } => {
+                if *saving {
+                    Theme::default()
+                } else {
+                    Theme::custom(
+                        "Hell".to_string(),
+                        Palette {
+                            background: Color::BLACK,
+                            text: Color::WHITE,
+                            primary: Color::TRANSPARENT,
+                            success: Color::TRANSPARENT,
+                            danger: Color::TRANSPARENT,
+                        },
+                    )
+                }
+            }
+        }
     }
 
     fn subscription(&self) -> Subscription<YTMRSMessage> {
@@ -57,9 +89,11 @@ impl Main {
                 None
             }),
             match self {
-                Self::Loaded { state, saving: _ } => {
-                    state.subscription().map(YTMRSMessage::MainMessage)
-                }
+                Self::Loaded {
+                    state,
+                    saving: _,
+                    background: _,
+                } => state.subscription().map(YTMRSMessage::MainMessage),
                 _ => Subscription::none(),
             },
         ])
@@ -82,22 +116,32 @@ impl Main {
                         let mut main = Ytmrs::new(state);
                         let commands = main.load();
                         *self = Self::Loaded {
-                            state: main,
+                            state: Box::new(main),
                             saving: false,
+                            background: None,
                         };
                         commands.map(YTMRSMessage::MainMessage)
                     }
                     Err(_) => {
                         *self = Self::Loaded {
-                            state: Ytmrs::default(),
+                            state: Box::<Ytmrs>::default(),
                             saving: false,
+                            background: None,
                         };
                         Cm::none()
                     }
                 },
                 _ => Cm::none(),
             },
-            Self::Loaded { state, saving: _ } => match message {
+            Self::Loaded {
+                state,
+                saving: _,
+                background,
+            } => match message {
+                YTMRSMessage::MainMessage(YtmrsMsg::NewBackground(gradient)) => {
+                    *background = Some(gradient);
+                    Cm::none()
+                }
                 YTMRSMessage::MainMessage(m) => state.update(m).map(YTMRSMessage::MainMessage),
                 YTMRSMessage::Save => {
                     println!["Saving"];
@@ -127,10 +171,18 @@ impl Main {
             .height(Length::Fill)
             .center_y()
             .into(),
-            Self::Loaded { state, saving } => container(column![
+            Self::Loaded {
+                state,
+                saving,
+                background,
+            } => container(column![
                 button(if *saving { "saving..." } else { "save" }).on_press(YTMRSMessage::Save),
                 state.view().map(YTMRSMessage::MainMessage)
             ])
+            .style(|_theme, _status| container::Appearance {
+                background: background.as_ref().map(|g| g.to_background()),
+                ..Default::default()
+            })
             .into(),
         }
     }
@@ -139,6 +191,7 @@ impl Main {
 pub fn main() -> iced::Result {
     iced::program("A cool song list", Main::update, Main::view)
         .load(Main::load)
+        .theme(Main::theme)
         .subscription(Main::subscription)
         .antialiasing(true)
         .run()

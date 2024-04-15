@@ -538,7 +538,7 @@ impl From<&RecursiveSongOp> for SongOpTracker {
 pub fn tester() {
     use crate::song_operations::RecursiveSongOp as RSO;
 
-    let ops: RSO = RSO::InfiniteRandom(vec![
+    let ops: RSO = RSO::SingleRandom(vec![
         RSO::SinglePlay("".to_string()),
         RSO::RandomPlay(vec![
             RSO::SinglePlay("".to_string()),
