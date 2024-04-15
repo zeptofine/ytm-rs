@@ -1,21 +1,22 @@
 use std::fmt::Debug;
 use std::path::PathBuf;
 
-use background::BackgroundGradient;
 use iced::Color;
 use iced::{alignment::Horizontal, keyboard, Command as Cm, Element, Length, Subscription};
 use iced::{
     theme::{Palette, Theme},
     widget::{button, column, container, text},
 };
+use scheme::YtmrsScheme;
 use ytmrs::{Ytmrs, YtmrsMsg};
 
-mod background;
 mod cache_handlers;
 mod response_types;
+mod scheme;
 mod settings;
 mod song;
 mod song_operations;
+mod styling;
 mod thumbnails;
 mod ytmrs;
 
@@ -31,7 +32,7 @@ enum Main {
     Loaded {
         state: Box<Ytmrs>,
         saving: bool,
-        background: Option<BackgroundGradient>,
+        background: Option<Box<YtmrsScheme>>,
     },
 }
 
@@ -54,19 +55,24 @@ impl Main {
             Main::Loaded {
                 state: _,
                 saving,
-                background: _,
+                background,
             } => {
                 if *saving {
                     Theme::default()
                 } else {
+                    let (primary, danger) = match background {
+                        Some(scheme) => (scheme.primary_color, scheme.error_color),
+                        None => (Color::TRANSPARENT, Color::TRANSPARENT),
+                    };
+
                     Theme::custom(
                         "Hell".to_string(),
                         Palette {
                             background: Color::BLACK,
                             text: Color::WHITE,
-                            primary: Color::TRANSPARENT,
+                            primary,
                             success: Color::TRANSPARENT,
-                            danger: Color::TRANSPARENT,
+                            danger,
                         },
                     )
                 }
@@ -138,8 +144,8 @@ impl Main {
                 saving: _,
                 background,
             } => match message {
-                YTMRSMessage::MainMessage(YtmrsMsg::NewBackground(gradient)) => {
-                    *background = Some(gradient);
+                YTMRSMessage::MainMessage(YtmrsMsg::NewBackground(scheme)) => {
+                    *background = Some(Box::new(scheme));
                     Cm::none()
                 }
                 YTMRSMessage::MainMessage(m) => state.update(m).map(YTMRSMessage::MainMessage),
@@ -174,13 +180,15 @@ impl Main {
             Self::Loaded {
                 state,
                 saving,
-                background,
+                background: scheme,
             } => container(column![
                 button(if *saving { "saving..." } else { "save" }).on_press(YTMRSMessage::Save),
-                state.view().map(YTMRSMessage::MainMessage)
+                state
+                    .view(*scheme.clone().unwrap_or_default())
+                    .map(YTMRSMessage::MainMessage)
             ])
             .style(|_theme, _status| container::Appearance {
-                background: background.as_ref().map(|g| g.to_background()),
+                background: scheme.as_ref().map(|g| g.to_background()),
                 ..Default::default()
             })
             .into(),

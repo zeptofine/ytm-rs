@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use iced::widget::{button, column, container, scrollable, text_input};
+use iced::widget::{button, column, container, row, scrollable, text_input};
 use iced::{
     alignment::{Alignment, Horizontal},
     Command as Cm, Element, Length, Subscription,
@@ -13,8 +13,8 @@ use rodio::{OutputStream, Sink};
 use serde::Serialize;
 
 use crate::{
-    background::BackgroundGradient,
     response_types::{YTResponseError, YTResponseType, YTSong},
+    scheme::YtmrsScheme,
     settings::YTMRSettings,
     song::{Song, SongMessage},
 };
@@ -85,8 +85,6 @@ pub struct Ytmrs {
     inputs: UserInputs,
     // audio_manager: YTMRSAudioManager,
     pub settings: YTMRSettings,
-
-    background: BackgroundGradient,
 }
 
 #[derive(Debug, Clone)]
@@ -98,7 +96,8 @@ pub enum YtmrsMsg {
     RequestRecieved(RequestResult),
     RequestParsed(YTResponseType),
     RequestParseFailure(YTResponseError),
-    NewBackground(BackgroundGradient),
+
+    NewBackground(YtmrsScheme),
 }
 
 #[derive(Debug, Clone)]
@@ -136,11 +135,11 @@ impl Ytmrs {
         Subscription::none()
     }
 
-    pub fn view(&self) -> Element<YtmrsMsg> {
+    pub fn view(&self, scheme: YtmrsScheme) -> Element<YtmrsMsg> {
         let input = self.inputs.view();
         let songs: Element<_> = column(self.settings.queue.iter().map(|song| {
             self.settings.saved_songs[song]
-                .view()
+                .view(scheme.song_appearance.clone())
                 .map(move |message| YtmrsMsg::SongMessage(song.clone(), message))
         }))
         .padding(0)
@@ -149,14 +148,19 @@ impl Ytmrs {
         column![
             input.map(YtmrsMsg::InputMessage),
             button("Generate").on_press(YtmrsMsg::SearchUrl),
-            scrollable(
-                container(songs)
-                    .width(Length::Fill)
-                    .padding(10)
-                    .align_x(Horizontal::Center)
-            ),
+            row![
+                scrollable(
+                    container(songs)
+                        .width(Length::Fill)
+                        .max_width(400)
+                        .padding(0)
+                        .align_x(Horizontal::Left)
+                ),
+                scrollable(self.inputs.view().map(YtmrsMsg::InputMessage),)
+                    .width(Length::FillPortion(1)),
+            ]
         ]
-        .align_items(Alignment::Center)
+        .align_items(Alignment::Start)
         .spacing(20)
         .padding(10)
         .into()
@@ -167,7 +171,12 @@ impl Ytmrs {
             YtmrsMsg::SongMessage(key, msg) => {
                 let song = self.settings.saved_songs.get_mut(&key).unwrap();
                 match msg {
-                    SongMessage::Clicked => todo!(),
+                    SongMessage::Clicked => match song.thumbnail.clone() {
+                        crate::thumbnails::ThumbnailState::Unknown => Cm::none(),
+                        crate::thumbnails::ThumbnailState::Downloaded { path, handle: _ } => {
+                            Cm::perform(YtmrsScheme::from_image(path), YtmrsMsg::NewBackground)
+                        }
+                    },
                     _ => song
                         .update(msg)
                         .map(move |msg| YtmrsMsg::SongMessage(key.clone(), msg)),
