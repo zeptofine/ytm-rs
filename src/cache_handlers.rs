@@ -43,9 +43,6 @@ struct CacheHandleItem {
 }
 
 impl CacheHandleItem {
-    fn new() -> Self {
-        Self::default()
-    }
     fn get_thumbnail(&self, source: &Path) -> Option<PathBuf> {
         let mut pth = source.to_path_buf();
         pth.push(self.thumbnail_path.clone()?);
@@ -128,11 +125,7 @@ impl CacheHandler {
     }
 
     pub fn get(&mut self, key: &str) -> CacheHandle {
-        let item = self
-            .map
-            .0
-            .entry(key.to_string())
-            .or_insert_with(CacheHandleItem::new);
+        let item = self.map.0.entry(key.to_string()).or_default();
         CacheHandle {
             source: self.source.clone(),
             item,

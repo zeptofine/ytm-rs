@@ -12,21 +12,20 @@ use ytmrs::{Ytmrs, YtmrsMsg};
 
 mod cache_handlers;
 mod response_types;
-mod scheme;
 mod settings;
 mod song;
-// mod song_operations;
+mod song_operations;
 mod styling;
 mod thumbnails;
 mod ytmrs;
 
 use crate::{
     response_types::IDKey,
-    scheme::{transition_scheme, SchemeState},
     settings::{LoadError, SaveError, YTMRSettings},
+    styling::{transition_scheme, SchemeState},
 };
 
-pub const BACKGROUND_TRANSITION_DURATION: Duration = Duration::from_millis(500);
+pub const BACKGROUND_TRANSITION_DURATION: Duration = Duration::from_millis(300);
 pub const BACKGROUND_TRANSITION_RATE: Duration = Duration::from_millis(1000 / 15); // ~15fps
 
 #[derive(Debug)]
@@ -41,6 +40,10 @@ struct Main {
     state: Option<MainState>,
 }
 
+// The largest enum variant by far is MainMessage,
+// but it is by far the most common, so it does not warrant
+// a Box.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 enum YTMRSMessage {
     Loaded(Result<YTMRSettings, LoadError>),
@@ -63,7 +66,7 @@ impl Main {
             Some(state) => {
                 let (primary, danger) = {
                     let choice = state.state.first_choice();
-                    (choice.primary_color, choice.error_color)
+                    (choice.colors.primary_color, choice.colors.error_color)
                 };
 
                 Theme::custom(
@@ -133,27 +136,6 @@ impl Main {
                 _ => Cm::none(),
             },
             Some(ref mut state) => match message {
-                YTMRSMessage::MainMessage(YtmrsMsg::SetNewBackground(k, scheme)) => {
-                    let schemestate = SchemeState::Started(Box::new(scheme::Started {
-                        from: state.state.first_choice().clone(),
-                        to: scheme.clone(),
-                        started: SystemTime::now(),
-                    }));
-                    state.state = schemestate.clone();
-                    Cm::batch([
-                        Cm::perform(
-                            transition_scheme(schemestate),
-                            YTMRSMessage::UpdateVisibleBackground,
-                        ),
-                        state
-                            .ytmrs
-                            .update(YtmrsMsg::SetNewBackground(k, scheme))
-                            .map(YTMRSMessage::MainMessage),
-                    ])
-                    // Cm::perform(, |state| {
-                    //     YTMRSMessage::UpdateVisibleBackground(state)
-                    // })
-                }
                 YTMRSMessage::UpdateVisibleBackground(scheme_state) => {
                     match scheme_state {
                         SchemeState::Started(_) => todo!(), // how
@@ -174,6 +156,27 @@ impl Main {
                     }
                 }
 
+                YTMRSMessage::MainMessage(YtmrsMsg::SetNewBackground(k, scheme)) => {
+                    let schemestate = SchemeState::Started(Box::new(styling::Started {
+                        from: state.state.first_choice().clone(),
+                        to: scheme.clone(),
+                        started: SystemTime::now(),
+                    }));
+                    state.state = schemestate.clone();
+                    Cm::batch([
+                        Cm::perform(
+                            transition_scheme(schemestate),
+                            YTMRSMessage::UpdateVisibleBackground,
+                        ),
+                        state
+                            .ytmrs
+                            .update(YtmrsMsg::SetNewBackground(k, scheme))
+                            .map(YTMRSMessage::MainMessage),
+                    ])
+                    // Cm::perform(, |state| {
+                    //     YTMRSMessage::UpdateVisibleBackground(state)
+                    // })
+                }
                 YTMRSMessage::MainMessage(msg) => {
                     state.ytmrs.update(msg).map(YTMRSMessage::MainMessage)
                 }
@@ -213,7 +216,7 @@ impl Main {
                     .map(YTMRSMessage::MainMessage)
             ])
             .style(|_, _| container::Appearance {
-                background: Some(state.state.first_choice().to_background()),
+                background: Some(state.state.first_choice().colors.to_background()),
                 ..Default::default()
             })
             .into(),

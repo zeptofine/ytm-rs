@@ -5,20 +5,17 @@ use iced::{
     alignment::{Alignment, Horizontal},
     Command as Cm, Element, Length, Subscription,
 };
-
 use once_cell::sync::Lazy;
 use reqwest::Url;
-use rodio::OutputStreamHandle;
-use rodio::{OutputStream, Sink};
+use rodio::{OutputStream, OutputStreamHandle, Sink};
 use serde::Serialize;
 
-use crate::cache_handlers::YtmCache;
-use crate::styling::color_to_argb;
 use crate::{
+    cache_handlers::YtmCache,
     response_types::{YTResponseError, YTResponseType, YTSong},
-    scheme::YtmrsScheme,
     settings::YTMRSettings,
     song::{Song, SongMessage},
+    styling::{color_to_argb, BasicYtmrsScheme, FullYtmrsScheme},
 };
 
 // use iced_aw::{color_picker, number_input};
@@ -99,7 +96,7 @@ pub enum YtmrsMsg {
     RequestParsed(YTResponseType),
     RequestParseFailure(YTResponseError),
 
-    SetNewBackground(String, YtmrsScheme),
+    SetNewBackground(String, BasicYtmrsScheme),
 }
 
 #[derive(Debug, Clone)]
@@ -137,11 +134,11 @@ impl Ytmrs {
         Subscription::none()
     }
 
-    pub fn view(&self, scheme: YtmrsScheme) -> Element<YtmrsMsg> {
+    pub fn view(&self, scheme: FullYtmrsScheme) -> Element<YtmrsMsg> {
         let input = self.inputs.view();
         let songs: Element<_> = column(self.settings.queue.iter().map(|song| {
             self.settings.saved_songs[song]
-                .view(scheme.song_appearance.clone())
+                .view(*scheme.song_appearance.clone())
                 .map(move |message| YtmrsMsg::SongMessage(song.clone(), message))
         }))
         .padding(0)
@@ -173,21 +170,30 @@ impl Ytmrs {
             YtmrsMsg::SongMessage(key, msg) => {
                 let song = self.settings.saved_songs.get_mut(&key).unwrap();
                 match msg {
-                    SongMessage::Clicked => match song.thumbnail.clone() {
-                        crate::thumbnails::ThumbnailState::Unknown => Cm::none(),
-                        crate::thumbnails::ThumbnailState::Downloaded { path, handle: _ } => {
-                            let handle = self.settings.index.get(&key);
-                            match &handle.get_color() {
-                                Some(col) => Cm::perform(
-                                    YtmrsScheme::from_argb(color_to_argb(*col)),
-                                    |scheme| YtmrsMsg::SetNewBackground(key, scheme),
-                                ),
-                                None => Cm::perform(YtmrsScheme::from_image(path), |scheme| {
-                                    YtmrsMsg::SetNewBackground(key, scheme)
-                                }),
-                            }
-                        }
-                    },
+                    SongMessage::Clicked => {
+                        Cm::batch([
+                            // Change background color to indicate the playing song
+                            match song.thumbnail.clone() {
+                                crate::thumbnails::ThumbnailState::Unknown => Cm::none(),
+                                crate::thumbnails::ThumbnailState::Downloaded {
+                                    path,
+                                    handle: _,
+                                } => {
+                                    let handle = self.settings.index.get(&key);
+                                    match &handle.get_color() {
+                                        Some(col) => Cm::perform(
+                                            BasicYtmrsScheme::from_argb(color_to_argb(*col)),
+                                            |scheme| YtmrsMsg::SetNewBackground(key, scheme),
+                                        ),
+                                        None => Cm::perform(
+                                            BasicYtmrsScheme::from_image(path),
+                                            |scheme| YtmrsMsg::SetNewBackground(key, scheme),
+                                        ),
+                                    }
+                                }
+                            },
+                        ])
+                    }
                     _ => song
                         .update(msg)
                         .map(move |msg| YtmrsMsg::SongMessage(key.clone(), msg)),
@@ -196,7 +202,10 @@ impl Ytmrs {
             YtmrsMsg::SetNewBackground(key, scheme) => {
                 // Save primary color to cache for future use
                 let mut handle = self.settings.index.get(&key);
-                handle.set_color(scheme.primary_color);
+                if handle.get_color().is_none() {
+                    handle.set_color(scheme.primary_color);
+                    println!["Saved primary color: {:?}", scheme.primary_color];
+                }
                 Cm::none()
             }
             YtmrsMsg::InputMessage(i) => self.inputs.update(i).map(YtmrsMsg::InputMessage),

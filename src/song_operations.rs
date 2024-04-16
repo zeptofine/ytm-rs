@@ -477,7 +477,7 @@ impl OperationTracker for SongOpTracker {
                 randomized_indices,
                 children,
             } => {
-                *current = randomized_indices.len();
+                *current = randomized_indices.len() - 1;
                 children[randomized_indices[*current]].to_end();
             }
             SongOpTracker::SingleRandom { index, children } => children[*index].to_end(),

@@ -1,41 +1,48 @@
-use std::time::SystemTime;
-use std::{path::PathBuf, thread};
+use std::{path::PathBuf, thread, time::SystemTime};
 
 use iced::{
     gradient::{ColorStop, Linear},
-    widget::button,
     Background, Color, Degrees, Gradient,
 };
 use image::{imageops::FilterType, io::Reader, GenericImageView};
 use material_colors::{color::Argb, quantize::QuantizerWsmeans, score::Score, theme::ThemeBuilder};
 
 use crate::styling::{
-    argb_to_color, ease_out_cubic, interpolate_color, pixel_to_argb, SongAppearance,
+    argb_to_color, ease_out_cubic, interpolate_color, pixel_to_argb, ScrollableAppearance,
+    SongAppearance,
 };
 use crate::{BACKGROUND_TRANSITION_DURATION, BACKGROUND_TRANSITION_RATE};
 
+pub trait Interpolable {
+    fn interpolate(&self, other: &Self, t: f32) -> Self;
+}
+
 #[derive(Debug, Clone)]
-pub struct YtmrsScheme {
+pub struct BasicYtmrsScheme {
     pub primary_color: Color,
-    pub song_appearance: SongAppearance,
     pub error_color: Color,
     pub back_start_color: Color,
     pub back_end_color: Color,
 }
-
-impl Default for YtmrsScheme {
+impl Default for BasicYtmrsScheme {
     fn default() -> Self {
         Self {
             primary_color: Color::new(1.0, 1.0, 1.0, 1.0),
             error_color: Color::new(1.0, 1.0, 1.0, 1.0),
             back_start_color: Color::new(0., 0., 0., 1.0),
             back_end_color: Color::new(0., 0., 0., 1.0),
-            song_appearance: SongAppearance::default(),
         }
     }
 }
 
-impl YtmrsScheme {
+#[derive(Debug, Clone, Default)]
+pub struct FullYtmrsScheme {
+    pub colors: BasicYtmrsScheme,
+    pub song_appearance: Box<SongAppearance>,
+    pub scrollable_appearance: Box<ScrollableAppearance>,
+}
+
+impl BasicYtmrsScheme {
     pub fn to_background(&self) -> Background {
         Background::Gradient(Gradient::Linear(Linear::new(Degrees(180.0)).add_stops([
             ColorStop {
@@ -96,15 +103,19 @@ impl YtmrsScheme {
             error_color: argb_to_color(scheme.error_container),
             back_start_color: argb_to_color(scheme.surface_container_high),
             back_end_color: argb_to_color(scheme.surface_container_lowest),
-            song_appearance: SongAppearance(button::Appearance {
-                background: None,
-                text_color: Color::WHITE,
-                ..Default::default()
-            }),
         }
     }
 
-    pub fn interpolate(&self, other: &Self, t: f32) -> Self {
+    pub fn into_full(self) -> FullYtmrsScheme {
+        FullYtmrsScheme {
+            colors: self,
+            ..Default::default()
+        }
+    }
+}
+
+impl Interpolable for BasicYtmrsScheme {
+    fn interpolate(&self, other: &Self, t: f32) -> Self {
         let t = ease_out_cubic(t).clamp(0.0, 1.0);
 
         Self {
@@ -112,27 +123,27 @@ impl YtmrsScheme {
             error_color: interpolate_color(&self.error_color, &other.error_color, t),
             back_start_color: interpolate_color(&self.back_start_color, &other.back_start_color, t),
             back_end_color: interpolate_color(&self.back_end_color, &other.back_end_color, t),
-            song_appearance: self.song_appearance.clone(),
         }
     }
 }
+
 #[derive(Debug, Clone)]
 pub struct Started {
-    pub from: YtmrsScheme,
-    pub to: YtmrsScheme,
+    pub from: FullYtmrsScheme,
+    pub to: BasicYtmrsScheme,
     pub started: SystemTime,
 }
 
 #[derive(Debug, Clone)]
 pub struct Transitioning {
-    pub from: YtmrsScheme,
-    pub to: YtmrsScheme,
-    pub value: YtmrsScheme,
+    pub from: BasicYtmrsScheme,
+    pub to: BasicYtmrsScheme,
+    pub value: FullYtmrsScheme,
     pub started: SystemTime,
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Finished(pub YtmrsScheme);
+pub struct Finished(pub FullYtmrsScheme);
 
 #[derive(Debug, Clone)]
 pub enum SchemeState {
@@ -147,7 +158,7 @@ impl Default for SchemeState {
     }
 }
 impl SchemeState {
-    pub fn first_choice(&self) -> &YtmrsScheme {
+    pub fn first_choice(&self) -> &FullYtmrsScheme {
         match self {
             SchemeState::Started(s) => &s.from,
             SchemeState::Transitioning(t) => &t.value,
@@ -165,11 +176,15 @@ pub async fn transition_scheme(state: SchemeState) -> SchemeState {
             thread::sleep(BACKGROUND_TRANSITION_RATE);
 
             SchemeState::Transitioning(Box::new(Transitioning {
-                value: s.from.interpolate(
-                    &s.to,
-                    progress.as_millis() as f32 / BACKGROUND_TRANSITION_RATE.as_millis() as f32,
-                ),
-                from: s.from,
+                value: s
+                    .from
+                    .colors
+                    .interpolate(
+                        &s.to,
+                        progress.as_millis() as f32 / BACKGROUND_TRANSITION_RATE.as_millis() as f32,
+                    )
+                    .into_full(),
+                from: s.from.colors,
                 to: s.to,
                 started: s.started,
             }))
@@ -184,47 +199,21 @@ pub async fn transition_scheme(state: SchemeState) -> SchemeState {
                     .clamp(0.0, 1.0);
                 let transitioned = t.from.interpolate(&t.to, actual_progress);
                 SchemeState::Transitioning(Box::new(Transitioning {
-                    value: transitioned,
+                    value: FullYtmrsScheme {
+                        colors: transitioned,
+                        song_appearance: t.value.song_appearance,
+                        scrollable_appearance: t.value.scrollable_appearance,
+                    },
                     ..*t
                 }))
             } else {
-                SchemeState::Finished(Box::new(Finished(t.to)))
+                SchemeState::Finished(Box::new(Finished(FullYtmrsScheme {
+                    colors: t.to,
+                    song_appearance: t.value.song_appearance,
+                    scrollable_appearance: t.value.scrollable_appearance,
+                })))
             }
         }
-        SchemeState::Finished(_) => todo!(),
+        SchemeState::Finished(_) => todo!(), // Hmmm... we're done. What now?
     }
-    // match state {
-    //     SchemeState::Transitioning {``
-    //         from,
-    //         to,
-    //         value: _,
-    //         started,
-    //     } => {
-    //         println!["Transitioning!!!"];
-    //         let until_finished = BACKGROUND_TRANSITION_DURATION
-    //             - (SystemTime::now().duration_since(started).unwrap());
-
-    //         if until_finished < Duration::ZERO {
-    //             SchemeState::Finished
-    //         } else {
-    //             thread::sleep(BACKGROUND_TRANSITION_RATE);
-    //             let progress = until_finished.as_millis();
-
-    //             println!["{:?}", progress];
-    //             SchemeState::Transitioning {
-    //                 value: Some(
-    //                     from.interpolate(
-    //                         &to,
-    //                         (progress as f32 / BACKGROUND_TRANSITION_DURATION.as_millis() as f32)
-    //                             .clamp(0.0, 1.1),
-    //                     ),
-    //                 ),
-    //                 from,
-    //                 to,
-    //                 started,
-    //             }
-    //         }
-    //     }
-    //     SchemeState::Finished => SchemeState::Finished,
-    // }
 }
