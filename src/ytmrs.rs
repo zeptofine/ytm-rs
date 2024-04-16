@@ -12,6 +12,8 @@ use rodio::OutputStreamHandle;
 use rodio::{OutputStream, Sink};
 use serde::Serialize;
 
+use crate::cache_handlers::YtmCache;
+use crate::styling::color_to_argb;
 use crate::{
     response_types::{YTResponseError, YTResponseType, YTSong},
     scheme::YtmrsScheme,
@@ -97,7 +99,7 @@ pub enum YtmrsMsg {
     RequestParsed(YTResponseType),
     RequestParseFailure(YTResponseError),
 
-    NewBackground(YtmrsScheme),
+    SetNewBackground(String, YtmrsScheme),
 }
 
 #[derive(Debug, Clone)]
@@ -174,13 +176,28 @@ impl Ytmrs {
                     SongMessage::Clicked => match song.thumbnail.clone() {
                         crate::thumbnails::ThumbnailState::Unknown => Cm::none(),
                         crate::thumbnails::ThumbnailState::Downloaded { path, handle: _ } => {
-                            Cm::perform(YtmrsScheme::from_image(path), YtmrsMsg::NewBackground)
+                            let handle = self.settings.index.get(&key);
+                            match &handle.get_color() {
+                                Some(col) => Cm::perform(
+                                    YtmrsScheme::from_argb(color_to_argb(*col)),
+                                    |scheme| YtmrsMsg::SetNewBackground(key, scheme),
+                                ),
+                                None => Cm::perform(YtmrsScheme::from_image(path), |scheme| {
+                                    YtmrsMsg::SetNewBackground(key, scheme)
+                                }),
+                            }
                         }
                     },
                     _ => song
                         .update(msg)
                         .map(move |msg| YtmrsMsg::SongMessage(key.clone(), msg)),
                 }
+            }
+            YtmrsMsg::SetNewBackground(key, scheme) => {
+                // Save primary color to cache for future use
+                let mut handle = self.settings.index.get(&key);
+                handle.set_color(scheme.primary_color);
+                Cm::none()
             }
             YtmrsMsg::InputMessage(i) => self.inputs.update(i).map(YtmrsMsg::InputMessage),
             YtmrsMsg::SearchUrl => {
@@ -248,7 +265,6 @@ impl Ytmrs {
                 println!["{:?}", e];
                 Cm::none()
             }
-            YtmrsMsg::NewBackground(_) => Cm::none(),
         }
     }
 

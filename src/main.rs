@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
 
 use iced::Color;
 use iced::{alignment::Horizontal, keyboard, Command as Cm, Element, Length, Subscription};
@@ -7,7 +8,6 @@ use iced::{
     theme::{Palette, Theme},
     widget::{button, column, container, text},
 };
-use scheme::YtmrsScheme;
 use ytmrs::{Ytmrs, YtmrsMsg};
 
 mod cache_handlers;
@@ -15,25 +15,30 @@ mod response_types;
 mod scheme;
 mod settings;
 mod song;
-mod song_operations;
+// mod song_operations;
 mod styling;
 mod thumbnails;
 mod ytmrs;
 
 use crate::{
     response_types::IDKey,
+    scheme::{transition_scheme, SchemeState},
     settings::{LoadError, SaveError, YTMRSettings},
 };
 
+pub const BACKGROUND_TRANSITION_DURATION: Duration = Duration::from_millis(500);
+pub const BACKGROUND_TRANSITION_RATE: Duration = Duration::from_millis(1000 / 15); // ~15fps
+
+#[derive(Debug)]
+struct MainState {
+    ytmrs: Ytmrs,
+    saving: bool,
+    state: SchemeState,
+}
+
 #[derive(Default, Debug)]
-enum Main {
-    #[default]
-    Loading,
-    Loaded {
-        state: Box<Ytmrs>,
-        saving: bool,
-        background: Option<Box<YtmrsScheme>>,
-    },
+struct Main {
+    state: Option<MainState>,
 }
 
 #[derive(Debug, Clone)]
@@ -42,6 +47,8 @@ enum YTMRSMessage {
     Save,
     Saved(Result<PathBuf, SaveError>),
     MainMessage(YtmrsMsg),
+
+    UpdateVisibleBackground(SchemeState),
 }
 
 impl Main {
@@ -50,32 +57,25 @@ impl Main {
     }
 
     fn theme(&self) -> Theme {
-        match self {
-            Main::Loading => Theme::default(),
-            Main::Loaded {
-                state: _,
-                saving,
-                background,
-            } => {
-                if *saving {
-                    Theme::default()
-                } else {
-                    let (primary, danger) = match background {
-                        Some(scheme) => (scheme.primary_color, scheme.error_color),
-                        None => (Color::TRANSPARENT, Color::TRANSPARENT),
-                    };
+        match &self.state {
+            Some(state) if state.saving => Theme::default(),
+            None => Theme::default(),
+            Some(state) => {
+                let (primary, danger) = {
+                    let choice = state.state.first_choice();
+                    (choice.primary_color, choice.error_color)
+                };
 
-                    Theme::custom(
-                        "Hell".to_string(),
-                        Palette {
-                            background: Color::BLACK,
-                            text: Color::WHITE,
-                            primary,
-                            success: Color::TRANSPARENT,
-                            danger,
-                        },
-                    )
-                }
+                Theme::custom(
+                    "Hell".to_string(),
+                    Palette {
+                        background: Color::BLACK,
+                        text: Color::WHITE,
+                        primary,
+                        success: Color::TRANSPARENT,
+                        danger,
+                    },
+                )
             }
         }
     }
@@ -94,13 +94,9 @@ impl Main {
 
                 None
             }),
-            match self {
-                Self::Loaded {
-                    state,
-                    saving: _,
-                    background: _,
-                } => state.subscription().map(YTMRSMessage::MainMessage),
-                _ => Subscription::none(),
+            match &self.state {
+                Some(state) => state.ytmrs.subscription().map(YTMRSMessage::MainMessage),
+                None => Subscription::none(),
             },
         ])
     }
@@ -115,44 +111,75 @@ impl Main {
     }
 
     fn update(&mut self, message: YTMRSMessage) -> Cm<YTMRSMessage> {
-        match self {
-            Self::Loading => match message {
-                YTMRSMessage::Loaded(o) => match o {
-                    Ok(state) => {
-                        let mut main = Ytmrs::new(state);
-                        let commands = main.load();
-                        *self = Self::Loaded {
-                            state: Box::new(main),
-                            saving: false,
-                            background: None,
-                        };
-                        commands.map(YTMRSMessage::MainMessage)
-                    }
-                    Err(_) => {
-                        *self = Self::Loaded {
-                            state: Box::<Ytmrs>::default(),
-                            saving: false,
-                            background: None,
-                        };
-                        Cm::none()
-                    }
-                },
+        match &mut self.state {
+            None => match message {
+                YTMRSMessage::Loaded(o) => {
+                    let (s, coms) = match o {
+                        Ok(settings) => {
+                            let mut main = Ytmrs::new(settings);
+                            let commands = main.load().map(YTMRSMessage::MainMessage);
+                            (main, commands)
+                        }
+                        Err(_) => (Ytmrs::default(), Cm::none()),
+                    };
+
+                    self.state = Some(MainState {
+                        ytmrs: s,
+                        saving: false,
+                        state: SchemeState::default(),
+                    });
+                    coms
+                }
                 _ => Cm::none(),
             },
-            Self::Loaded {
-                state,
-                saving: _,
-                background,
-            } => match message {
-                YTMRSMessage::MainMessage(YtmrsMsg::NewBackground(scheme)) => {
-                    *background = Some(Box::new(scheme));
-                    Cm::none()
+            Some(ref mut state) => match message {
+                YTMRSMessage::MainMessage(YtmrsMsg::SetNewBackground(k, scheme)) => {
+                    let schemestate = SchemeState::Started(Box::new(scheme::Started {
+                        from: state.state.first_choice().clone(),
+                        to: scheme.clone(),
+                        started: SystemTime::now(),
+                    }));
+                    state.state = schemestate.clone();
+                    Cm::batch([
+                        Cm::perform(
+                            transition_scheme(schemestate),
+                            YTMRSMessage::UpdateVisibleBackground,
+                        ),
+                        state
+                            .ytmrs
+                            .update(YtmrsMsg::SetNewBackground(k, scheme))
+                            .map(YTMRSMessage::MainMessage),
+                    ])
+                    // Cm::perform(, |state| {
+                    //     YTMRSMessage::UpdateVisibleBackground(state)
+                    // })
                 }
-                YTMRSMessage::MainMessage(m) => state.update(m).map(YTMRSMessage::MainMessage),
+                YTMRSMessage::UpdateVisibleBackground(scheme_state) => {
+                    match scheme_state {
+                        SchemeState::Started(_) => todo!(), // how
+                        SchemeState::Transitioning(_) => {
+                            state.state = scheme_state.clone();
+
+                            Cm::perform(
+                                transition_scheme(scheme_state),
+                                |state: SchemeState| -> YTMRSMessage {
+                                    YTMRSMessage::UpdateVisibleBackground(state)
+                                },
+                            )
+                        }
+                        SchemeState::Finished(_) => {
+                            state.state = *Box::new(scheme_state);
+                            Cm::none()
+                        }
+                    }
+                }
+
+                YTMRSMessage::MainMessage(msg) => {
+                    state.ytmrs.update(msg).map(YTMRSMessage::MainMessage)
+                }
                 YTMRSMessage::Save => {
-                    println!["Saving"];
-                    state.prepare_to_save();
-                    Cm::perform(state.settings.clone().save(), YTMRSMessage::Saved)
+                    state.ytmrs.prepare_to_save();
+                    Cm::perform(state.ytmrs.settings.clone().save(), YTMRSMessage::Saved)
                 }
                 YTMRSMessage::Saved(success) => {
                     match success {
@@ -167,8 +194,8 @@ impl Main {
     }
 
     fn view(&self) -> Element<YTMRSMessage> {
-        match self {
-            Self::Loading => container(
+        match &self.state {
+            None => container(
                 text("Loading...")
                     .horizontal_alignment(Horizontal::Center)
                     .size(5),
@@ -177,18 +204,16 @@ impl Main {
             .height(Length::Fill)
             .center_y()
             .into(),
-            Self::Loaded {
-                state,
-                saving,
-                background: scheme,
-            } => container(column![
-                button(if *saving { "saving..." } else { "save" }).on_press(YTMRSMessage::Save),
+            Some(state) => container(column![
+                button(if state.saving { "saving..." } else { "save" })
+                    .on_press(YTMRSMessage::Save),
                 state
-                    .view(*scheme.clone().unwrap_or_default())
+                    .ytmrs
+                    .view(state.state.first_choice().clone())
                     .map(YTMRSMessage::MainMessage)
             ])
-            .style(|_theme, _status| container::Appearance {
-                background: scheme.as_ref().map(|g| g.to_background()),
+            .style(|_, _| container::Appearance {
+                background: Some(state.state.first_choice().to_background()),
                 ..Default::default()
             })
             .into(),

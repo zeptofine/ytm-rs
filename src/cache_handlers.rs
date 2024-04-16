@@ -1,8 +1,11 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
+use iced::Color;
+use material_colors::color::Argb;
 use serde::{
     de::{MapAccess, Visitor},
     ser::SerializeMap,
@@ -10,7 +13,10 @@ use serde::{
 };
 use uuid::Uuid;
 
-use crate::IDKey;
+use crate::{
+    styling::{argb_to_color, color_to_argb},
+    IDKey,
+};
 
 // use once_cell::sync::Lazy;
 // use serde::{Deserializer, Serializer};
@@ -22,22 +28,23 @@ fn generate_id() -> String {
 pub trait YtmCache {
     fn ensure_thumbnail(&mut self) -> PathBuf;
     fn ensure_song(&mut self) -> PathBuf;
+    fn get_color(&self) -> Option<Color>;
+    fn set_color(&mut self, color: Color);
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 struct CacheHandleItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     thumbnail_path: Option<PathBuf>, // thumbnail path
     #[serde(skip_serializing_if = "Option::is_none")]
     song_path: Option<PathBuf>, // song path
+    #[serde(skip_serializing_if = "Option::is_none")]
+    primary_color: Option<String>,
 }
 
 impl CacheHandleItem {
     fn new() -> Self {
-        Self {
-            thumbnail_path: None,
-            song_path: None,
-        }
+        Self::default()
     }
     fn get_thumbnail(&self, source: &Path) -> Option<PathBuf> {
         let mut pth = source.to_path_buf();
@@ -68,6 +75,16 @@ impl YtmCache for CacheHandleItem {
         }
         self.song_path.clone().unwrap()
     }
+
+    fn get_color(&self) -> Option<Color> {
+        self.primary_color
+            .clone()
+            .map(|argb| argb_to_color(Argb::from_str(&argb).unwrap()))
+    }
+
+    fn set_color(&mut self, color: Color) {
+        self.primary_color = Some(color_to_argb(color).to_hex());
+    }
 }
 pub struct CacheHandle<'a> {
     source: PathBuf,
@@ -82,6 +99,14 @@ impl YtmCache for CacheHandle<'_> {
 
     fn ensure_song(&mut self) -> PathBuf {
         todo!()
+    }
+
+    fn get_color(&self) -> Option<Color> {
+        self.item.get_color()
+    }
+
+    fn set_color(&mut self, color: Color) {
+        self.item.set_color(color)
     }
 }
 
@@ -134,6 +159,7 @@ impl CacheHandler {
                         CacheHandleItem {
                             thumbnail_path: item.thumbnail_path.clone().and(exists_thumb),
                             song_path: item.song_path.clone().and(exists_song),
+                            primary_color: item.primary_color.clone(),
                         },
                     )),
                 }

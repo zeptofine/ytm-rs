@@ -139,7 +139,7 @@ pub trait OperationTracker {
     fn to_end(&mut self) {}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum SongOpTracker {
     SinglePlay,
     PlayOnce {
