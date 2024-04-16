@@ -15,7 +15,7 @@ use crate::{
     response_types::{YTResponseError, YTResponseType, YTSong},
     settings::YTMRSettings,
     song::{Song, SongMessage},
-    styling::{color_to_argb, BasicYtmrsScheme, FullYtmrsScheme},
+    styling::{color_to_argb, update_scrollable, BasicYtmrsScheme, FullYtmrsScheme},
 };
 
 // use iced_aw::{color_picker, number_input};
@@ -154,7 +154,8 @@ impl Ytmrs {
                         .max_width(400)
                         .padding(0)
                         .align_x(Horizontal::Left)
-                ),
+                )
+                .style(move |_t, s| update_scrollable(scheme.scrollable_appearance.clone().0, s)),
                 scrollable(self.inputs.view().map(YtmrsMsg::InputMessage),)
                     .width(Length::FillPortion(1)),
             ]

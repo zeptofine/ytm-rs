@@ -7,11 +7,13 @@ use iced::{
 use image::{imageops::FilterType, io::Reader, GenericImageView};
 use material_colors::{color::Argb, quantize::QuantizerWsmeans, score::Score, theme::ThemeBuilder};
 
-use crate::styling::{
-    argb_to_color, ease_out_cubic, interpolate_color, pixel_to_argb, ScrollableAppearance,
-    SongAppearance,
+use crate::{
+    styling::{
+        argb_to_color, ease_out_cubic, interpolate_color, pixel_to_argb, ScrollableAppearance,
+        SongAppearance,
+    },
+    BACKGROUND_TRANSITION_DURATION, BACKGROUND_TRANSITION_RATE,
 };
-use crate::{BACKGROUND_TRANSITION_DURATION, BACKGROUND_TRANSITION_RATE};
 
 pub trait Interpolable {
     fn interpolate(&self, other: &Self, t: f32) -> Self;
