@@ -11,6 +11,7 @@ use iced::{
 use ytmrs::{Ytmrs, YtmrsMsg};
 
 mod cache_handlers;
+mod chunked_list;
 mod response_types;
 mod settings;
 mod song;

@@ -19,7 +19,7 @@ pub trait Interpolable {
     fn interpolate(&self, other: &Self, t: f32) -> Self;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BasicYtmrsScheme {
     pub primary_color: Color,
     pub error_color: Color,

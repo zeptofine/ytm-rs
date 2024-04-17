@@ -1,10 +1,11 @@
 use std::fmt::Debug;
 
-use iced::widget::{button, column, container, row, scrollable, text_input};
 use iced::{
     alignment::{Alignment, Horizontal},
-    Command as Cm, Element, Length, Subscription,
+    widget::{button, column, container, row, scrollable, text_input},
+    window, Command as Cm, Element, Length, Size, Subscription,
 };
+use iced::{event, Color, Event};
 use once_cell::sync::Lazy;
 use reqwest::Url;
 use rodio::{OutputStream, OutputStreamHandle, Sink};
@@ -93,7 +94,7 @@ pub enum YtmrsMsg {
     SearchUrl,
 
     RequestRecieved(RequestResult),
-    RequestParsed(YTResponseType),
+    RequestParsed(Box<YTResponseType>),
     RequestParseFailure(YTResponseError),
 
     SetNewBackground(String, BasicYtmrsScheme),
@@ -227,7 +228,7 @@ impl Ytmrs {
             YtmrsMsg::RequestRecieved(response) => match response {
                 RequestResult::Success(s) => {
                     Cm::perform(Ytmrs::parse_request(s), |result| match result {
-                        Ok(r) => YtmrsMsg::RequestParsed(r),
+                        Ok(r) => YtmrsMsg::RequestParsed(Box::new(r)),
                         Err(e) => YtmrsMsg::RequestParseFailure(e),
                     })
                 }
@@ -236,7 +237,7 @@ impl Ytmrs {
                     Cm::none()
                 }
             },
-            YtmrsMsg::RequestParsed(response_type) => match response_type {
+            YtmrsMsg::RequestParsed(response_type) => match *response_type {
                 YTResponseType::Song(song) => {
                     println!["Request is a song"];
                     let id = song.id.clone();

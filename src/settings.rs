@@ -3,9 +3,9 @@ use std::{collections::HashMap, env, path::PathBuf};
 use async_std::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{cache_handlers::CacheHandler, song::Song};
+use crate::{cache_handlers::CacheHandler, chunked_list::PagedSongList, song::Song};
 
-type SongID = String;
+pub type SongID = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTMRUserSettings {

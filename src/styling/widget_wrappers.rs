@@ -74,7 +74,7 @@ pub fn update_scrollable(
     match status {
         scrollable::Status::Active => {}
         scrollable::Status::Hovered {
-            is_horizontal_scrollbar_hovered: horiz,
+            is_horizontal_scrollbar_hovered: _,
             is_vertical_scrollbar_hovered: vert,
         } => {
             if vert {
@@ -87,11 +87,12 @@ pub fn update_scrollable(
             }
         }
         scrollable::Status::Dragged {
-            is_horizontal_scrollbar_dragged: horiz,
+            is_horizontal_scrollbar_dragged: _,
             is_vertical_scrollbar_dragged: vert,
         } => {
             if vert {
                 appearance.vertical_scrollbar.scroller.color = Color::WHITE;
+                appearance.vertical_scrollbar.scroller.border = Border::rounded(6);
                 appearance.vertical_scrollbar.border = Border::rounded(8)
                     .with_width(2)
                     .with_color(Color::new(1., 1., 1., 0.02));
