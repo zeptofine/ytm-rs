@@ -3,7 +3,7 @@ use std::{collections::HashMap, env, path::PathBuf};
 use async_std::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{cache_handlers::CacheHandler, chunked_list::PagedSongList, song::Song};
+use crate::{cache_handlers::CacheHandler, song::Song, song_operations::SongOpConstructor};
 
 pub type SongID = String;
 
@@ -18,11 +18,14 @@ impl Default for YTMRUserSettings {
     }
 }
 
+pub type SongMap = HashMap<SongID, Song>;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTMRSettings {
-    pub saved_songs: HashMap<SongID, Song>,
+    pub saved_songs: SongMap,
     pub index: CacheHandler,
     pub queue: Vec<SongID>,
+    pub operation_constructor: SongOpConstructor,
     pub user_settings: YTMRUserSettings,
 }
 
@@ -35,6 +38,7 @@ impl YTMRSettings {
                 None => self.index,
             },
             queue: self.queue,
+            operation_constructor: self.operation_constructor,
             user_settings: self.user_settings,
         }
     }
@@ -53,6 +57,7 @@ impl Default for YTMRSettings {
             index,
             queue: vec![],
             user_settings: YTMRUserSettings::default(),
+            operation_constructor: SongOpConstructor::default(),
         }
     }
 }

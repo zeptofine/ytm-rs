@@ -3,9 +3,8 @@ use std::fmt::Debug;
 use iced::{
     alignment::{Alignment, Horizontal},
     widget::{button, column, container, row, scrollable, text_input},
-    window, Command as Cm, Element, Length, Size, Subscription,
+    Command as Cm, Element, Length, Subscription,
 };
-use iced::{event, Color, Event};
 use once_cell::sync::Lazy;
 use reqwest::Url;
 use rodio::{OutputStream, OutputStreamHandle, Sink};
@@ -16,6 +15,7 @@ use crate::{
     response_types::{YTResponseError, YTResponseType, YTSong},
     settings::YTMRSettings,
     song::{Song, SongMessage},
+    song_operations::SongOpMessage,
     styling::{color_to_argb, update_scrollable, BasicYtmrsScheme, FullYtmrsScheme},
 };
 
@@ -98,6 +98,8 @@ pub enum YtmrsMsg {
     RequestParseFailure(YTResponseError),
 
     SetNewBackground(String, BasicYtmrsScheme),
+
+    OpConstructorMsg(SongOpMessage),
 }
 
 #[derive(Debug, Clone)]
@@ -139,15 +141,25 @@ impl Ytmrs {
         let input = self.inputs.view();
         let songs: Element<_> = column(self.settings.queue.iter().map(|song| {
             self.settings.saved_songs[song]
-                .view(*scheme.song_appearance.clone())
+                .view(&scheme.song_appearance)
                 .map(move |message| YtmrsMsg::SongMessage(song.clone(), message))
         }))
         .padding(0)
         .into();
 
+        let constructor = scrollable(
+            self.settings
+                .operation_constructor
+                .view(&self.settings.saved_songs, &scheme)
+                .map(YtmrsMsg::OpConstructorMsg),
+        )
+        .width(Length::Fill);
+
         column![
-            input.map(YtmrsMsg::InputMessage),
-            button("Generate").on_press(YtmrsMsg::SearchUrl),
+            row![
+                input.map(YtmrsMsg::InputMessage),
+                button("Generate").on_press(YtmrsMsg::SearchUrl),
+            ],
             row![
                 scrollable(
                     container(songs)
@@ -157,11 +169,10 @@ impl Ytmrs {
                         .align_x(Horizontal::Left)
                 )
                 .style(move |_t, s| update_scrollable(scheme.scrollable_appearance.clone().0, s)),
-                scrollable(self.inputs.view().map(YtmrsMsg::InputMessage),)
-                    .width(Length::FillPortion(1)),
+                constructor
             ]
         ]
-        .align_items(Alignment::Start)
+        .align_items(Alignment::Center)
         .spacing(20)
         .padding(10)
         .into()
@@ -276,6 +287,11 @@ impl Ytmrs {
                 println!["{:?}", e];
                 Cm::none()
             }
+            YtmrsMsg::OpConstructorMsg(msg) => self
+                .settings
+                .operation_constructor
+                .update(msg)
+                .map(YtmrsMsg::OpConstructorMsg),
         }
     }
 

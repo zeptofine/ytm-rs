@@ -18,7 +18,10 @@ impl Default for SongAppearance {
     }
 }
 
-pub fn update_button(appearance: button::Appearance, status: button::Status) -> button::Appearance {
+pub fn update_song_button(
+    appearance: button::Appearance,
+    status: button::Status,
+) -> button::Appearance {
     let mut appearance = appearance;
     match status {
         button::Status::Active => {}
