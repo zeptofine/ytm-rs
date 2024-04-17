@@ -1,9 +1,10 @@
 use iced::{
+    overlay::menu,
     widget::{
-        button, container,
+        button, container, pick_list,
         scrollable::{self, Scrollbar, Scroller},
     },
-    Border, Color,
+    Background, Border, Color,
 };
 
 #[derive(Debug, Clone)]
@@ -17,7 +18,6 @@ impl Default for SongAppearance {
         })
     }
 }
-
 pub fn update_song_button(
     appearance: button::Appearance,
     status: button::Status,
@@ -35,6 +35,12 @@ pub fn update_song_button(
     }
     appearance
 }
+
+// pub fn update_song_list_item_button(
+//     appearance: button::Appearance,
+//     status: button::Status,
+// ) -> button::Appearance {
+// }
 
 #[derive(Debug, Clone)]
 pub struct ScrollableAppearance(pub scrollable::Appearance);
@@ -68,7 +74,6 @@ impl Default for ScrollableAppearance {
         })
     }
 }
-
 pub fn update_scrollable(
     appearance: scrollable::Appearance,
     status: scrollable::Status,
@@ -103,4 +108,34 @@ pub fn update_scrollable(
         }
     }
     appearance
+}
+
+#[derive(Debug, Clone)]
+pub struct PickListAppearance(pub pick_list::Appearance);
+impl Default for PickListAppearance {
+    fn default() -> Self {
+        Self(pick_list::Appearance {
+            text_color: Color::WHITE,
+            placeholder_color: Color::WHITE,
+            handle_color: Color::WHITE,
+            background: iced::Background::Color(Color::TRANSPARENT),
+            border: Border::rounded(4)
+                .with_width(1)
+                .with_color(Color::new(0.85, 0.85, 0.85, 0.2)),
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PickMenuAppearance(pub menu::Appearance);
+impl Default for PickMenuAppearance {
+    fn default() -> Self {
+        Self(menu::Appearance {
+            background: Background::Color(Color::BLACK),
+            border: Border::rounded(4).with_width(1).with_color(Color::WHITE),
+            text_color: Color::WHITE,
+            selected_text_color: Color::BLACK,
+            selected_background: Background::Color(Color::WHITE),
+        })
+    }
 }

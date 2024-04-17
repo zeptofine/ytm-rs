@@ -1,7 +1,7 @@
 use iced::{
     alignment::Vertical,
     widget::{button, column, row, text, Image, Row},
-    Command as Cm, Element, Length,
+    Alignment, Command as Cm, Element, Length,
 };
 
 use serde::{Deserialize, Serialize};
@@ -107,13 +107,22 @@ impl Song {
 
     pub fn view_closable(&self, appearance: &SongAppearance) -> Element<ClosableSongMessage> {
         let song_appearance = appearance.0;
-        self.img_and_data()
-            .push(
+        let img_and_data = self.img_and_data();
+        button(
+            row![
+                img_and_data,
                 button("x")
                     .on_press(ClosableSongMessage::Closed)
-                    .style(move |_t, status| update_song_button(song_appearance, status)),
-            )
-            .into()
+                    .style(move |_t, status| update_song_button(song_appearance, status))
+            ]
+            .align_items(Alignment::Center)
+            .padding(0)
+            .spacing(0),
+        )
+        .padding(0)
+        .style(move |_t, status| update_song_button(song_appearance, status))
+        .on_press(ClosableSongMessage::Clicked)
+        .into()
     }
 
     pub fn update(&mut self, msg: SongMessage) -> Cm<SongMessage> {
@@ -135,4 +144,5 @@ pub enum SongMessage {
 #[derive(Debug, Clone)]
 pub enum ClosableSongMessage {
     Closed,
+    Clicked,
 }

@@ -26,8 +26,8 @@ use crate::{
     styling::{transition_scheme, SchemeState},
 };
 
-pub const BACKGROUND_TRANSITION_DURATION: Duration = Duration::from_millis(300);
-pub const BACKGROUND_TRANSITION_RATE: Duration = Duration::from_millis(1000 / 15); // ~15fps
+pub const BACKGROUND_TRANSITION_DURATION: Duration = Duration::from_millis(500);
+pub const BACKGROUND_TRANSITION_RATE: Duration = Duration::from_millis(1000 / 20); // ~15fps
 
 #[derive(Debug)]
 struct MainState {

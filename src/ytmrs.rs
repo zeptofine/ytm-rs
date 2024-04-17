@@ -2,7 +2,8 @@ use std::fmt::Debug;
 
 use iced::{
     alignment::{Alignment, Horizontal},
-    widget::{button, column, container, row, scrollable, text_input},
+    widget::{column, container, row, scrollable, text_input},
+    window::Action,
     Command as Cm, Element, Length, Subscription,
 };
 use once_cell::sync::Lazy;
@@ -15,8 +16,9 @@ use crate::{
     response_types::{YTResponseError, YTResponseType, YTSong},
     settings::YTMRSettings,
     song::{Song, SongMessage},
-    song_operations::SongOpMessage,
+    song_operations::{ConstructorItem, SongOpMessage},
     styling::{color_to_argb, update_scrollable, BasicYtmrsScheme, FullYtmrsScheme},
+    thumbnails::ThumbnailState,
 };
 
 // use iced_aw::{color_picker, number_input};
@@ -36,6 +38,7 @@ struct UserInputs {
 #[derive(Debug, Clone)]
 pub enum InputMessage {
     UrlChanged(String),
+    UrlSubmitted,
 }
 
 impl UserInputs {
@@ -43,6 +46,7 @@ impl UserInputs {
         column![text_input("Youtube URL...", &self.url)
             .id(INPUT_ID.clone())
             .on_input(InputMessage::UrlChanged)
+            .on_submit(InputMessage::UrlSubmitted)
             .size(20)
             .padding(15),]
         .into()
@@ -51,6 +55,7 @@ impl UserInputs {
     fn update(&mut self, message: InputMessage) -> Cm<InputMessage> {
         match message {
             InputMessage::UrlChanged(s) => self.url = s,
+            InputMessage::UrlSubmitted => {}
         }
         Cm::none()
     }
@@ -91,7 +96,6 @@ pub struct Ytmrs {
 pub enum YtmrsMsg {
     SongMessage(String, SongMessage),
     InputMessage(InputMessage),
-    SearchUrl,
 
     RequestRecieved(RequestResult),
     RequestParsed(Box<YTResponseType>),
@@ -107,6 +111,30 @@ pub enum RequestResult {
     Success(String),
     RequestError,
     JsonParseError,
+}
+
+async fn request_info(url: String) -> RequestResult {
+    println!["Requesting info for {}", url];
+    let client = reqwest::Client::new();
+
+    match client
+        .post("http://127.0.0.1:55001/request_info")
+        .json(&RequestInfoDict {
+            url,
+            process: false,
+        })
+        .send()
+        .await
+    {
+        Err(e) => {
+            println!["{e:?}"];
+            RequestResult::RequestError
+        }
+        Ok(r) => match r.text().await {
+            Err(_) => RequestResult::JsonParseError,
+            Ok(j) => RequestResult::Success(j),
+        },
+    }
 }
 
 impl Ytmrs {
@@ -138,7 +166,7 @@ impl Ytmrs {
     }
 
     pub fn view(&self, scheme: FullYtmrsScheme) -> Element<YtmrsMsg> {
-        let input = self.inputs.view();
+        let input = self.inputs.view().map(YtmrsMsg::InputMessage);
         let songs: Element<_> = column(self.settings.queue.iter().map(|song| {
             self.settings.saved_songs[song]
                 .view(&scheme.song_appearance)
@@ -156,10 +184,7 @@ impl Ytmrs {
         .width(Length::Fill);
 
         column![
-            row![
-                input.map(YtmrsMsg::InputMessage),
-                button("Generate").on_press(YtmrsMsg::SearchUrl),
-            ],
+            input,
             row![
                 scrollable(
                     container(songs)
@@ -184,28 +209,31 @@ impl Ytmrs {
                 let song = self.settings.saved_songs.get_mut(&key).unwrap();
                 match msg {
                     SongMessage::Clicked => {
-                        Cm::batch([
-                            // Change background color to indicate the playing song
-                            match song.thumbnail.clone() {
-                                crate::thumbnails::ThumbnailState::Unknown => Cm::none(),
-                                crate::thumbnails::ThumbnailState::Downloaded {
-                                    path,
-                                    handle: _,
-                                } => {
-                                    let handle = self.settings.index.get(&key);
-                                    match &handle.get_color() {
-                                        Some(col) => Cm::perform(
-                                            BasicYtmrsScheme::from_argb(color_to_argb(*col)),
-                                            |scheme| YtmrsMsg::SetNewBackground(key, scheme),
-                                        ),
-                                        None => Cm::perform(
-                                            BasicYtmrsScheme::from_image(path),
-                                            |scheme| YtmrsMsg::SetNewBackground(key, scheme),
-                                        ),
-                                    }
-                                }
-                            },
-                        ])
+                        // Add song to queue
+                        self.settings
+                            .operation_constructor
+                            .push(ConstructorItem::Song(key));
+
+                        // Cm::batch([
+                        //     // Change background color to indicate the playing song
+                        //     match song.thumbnail.clone() {
+                        //         ThumbnailState::Unknown => Cm::none(),
+                        //         ThumbnailState::Downloaded { path, handle: _ } => {
+                        //             let handle = self.settings.index.get(&key);
+                        //             match &handle.get_color() {
+                        //                 Some(col) => Cm::perform(
+                        //                     BasicYtmrsScheme::from_argb(color_to_argb(*col)),
+                        //                     |scheme| YtmrsMsg::SetNewBackground(key, scheme),
+                        //                 ),
+                        //                 None => Cm::perform(
+                        //                     BasicYtmrsScheme::from_image(path),
+                        //                     |scheme| YtmrsMsg::SetNewBackground(key, scheme),
+                        //                 ),
+                        //             }
+                        //         }
+                        //     },
+                        // ]);
+                        Cm::none()
                     }
                     _ => song
                         .update(msg)
@@ -221,12 +249,11 @@ impl Ytmrs {
                 }
                 Cm::none()
             }
-            YtmrsMsg::InputMessage(i) => self.inputs.update(i).map(YtmrsMsg::InputMessage),
-            YtmrsMsg::SearchUrl => {
+            YtmrsMsg::InputMessage(InputMessage::UrlSubmitted) => {
                 // Check if URL is valid
                 match Url::parse(&self.inputs.url) {
                     Ok(_) => Cm::perform(
-                        Ytmrs::request_info(self.inputs.url.clone()),
+                        request_info(self.inputs.url.clone()),
                         YtmrsMsg::RequestRecieved,
                     ),
 
@@ -236,6 +263,7 @@ impl Ytmrs {
                     }
                 }
             }
+            YtmrsMsg::InputMessage(i) => self.inputs.update(i).map(YtmrsMsg::InputMessage),
             YtmrsMsg::RequestRecieved(response) => match response {
                 RequestResult::Success(s) => {
                     Cm::perform(Ytmrs::parse_request(s), |result| match result {
@@ -311,30 +339,6 @@ impl Ytmrs {
 
     async fn parse_request(response: String) -> Result<YTResponseType, YTResponseError> {
         YTResponseType::new(response)
-    }
-
-    async fn request_info(url: String) -> RequestResult {
-        println!["Requesting info for {}", url];
-        let client = reqwest::Client::new();
-
-        match client
-            .post("http://127.0.0.1:55001/request_info")
-            .json(&RequestInfoDict {
-                url,
-                process: false,
-            })
-            .send()
-            .await
-        {
-            Err(e) => {
-                println!["{e:?}"];
-                RequestResult::RequestError
-            }
-            Ok(r) => match r.text().await {
-                Err(_) => RequestResult::JsonParseError,
-                Ok(j) => RequestResult::Success(j),
-            },
-        }
     }
 }
 

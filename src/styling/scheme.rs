@@ -15,6 +15,8 @@ use crate::{
     BACKGROUND_TRANSITION_DURATION, BACKGROUND_TRANSITION_RATE,
 };
 
+use super::{PickListAppearance, PickMenuAppearance};
+
 pub trait Interpolable {
     fn interpolate(&self, other: &Self, t: f32) -> Self;
 }
@@ -36,14 +38,6 @@ impl Default for BasicYtmrsScheme {
         }
     }
 }
-
-#[derive(Debug, Clone, Default)]
-pub struct FullYtmrsScheme {
-    pub colors: BasicYtmrsScheme,
-    pub song_appearance: Box<SongAppearance>,
-    pub scrollable_appearance: Box<ScrollableAppearance>,
-}
-
 impl BasicYtmrsScheme {
     pub fn to_background(&self) -> Background {
         Background::Gradient(Gradient::Linear(Linear::new(Degrees(180.0)).add_stops([
@@ -129,6 +123,15 @@ impl Interpolable for BasicYtmrsScheme {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct FullYtmrsScheme {
+    pub colors: BasicYtmrsScheme,
+    pub song_appearance: Box<SongAppearance>,
+    pub scrollable_appearance: Box<ScrollableAppearance>,
+    pub pick_list_appearance: Box<PickListAppearance>,
+    pub pick_menu_appearance: Box<PickMenuAppearance>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Started {
     pub from: FullYtmrsScheme,
@@ -203,16 +206,14 @@ pub async fn transition_scheme(state: SchemeState) -> SchemeState {
                 SchemeState::Transitioning(Box::new(Transitioning {
                     value: FullYtmrsScheme {
                         colors: transitioned,
-                        song_appearance: t.value.song_appearance,
-                        scrollable_appearance: t.value.scrollable_appearance,
+                        ..t.value
                     },
                     ..*t
                 }))
             } else {
                 SchemeState::Finished(Box::new(Finished(FullYtmrsScheme {
                     colors: t.to,
-                    song_appearance: t.value.song_appearance,
-                    scrollable_appearance: t.value.scrollable_appearance,
+                    ..t.value
                 })))
             }
         }

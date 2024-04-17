@@ -1,4 +1,5 @@
 use iced::{
+    alignment::Vertical,
     widget::{button, column, pick_list, row, text, text_input, Column, Row, Space},
     Command as Cm, Element, Length, Renderer, Theme,
 };
@@ -9,6 +10,8 @@ use crate::{
     song::ClosableSongMessage,
     styling::FullYtmrsScheme,
 };
+
+use super::RecursiveSongOp;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ActualRecursiveOps {
@@ -75,13 +78,22 @@ pub enum SongOpMessage {
     Null,
 }
 
+// #[derive(Debug, Clone, Default)]
+// pub enum SelectionMode {
+//     #[default]
+//     None,
+//     Single(usize),
+//     Multiple(Vec<usize>),
+//     Range(Range<usize>),
+// }
+
 fn verify_n(txt: String) -> SongOpMessage {
     txt.parse::<u32>()
         .map(SongOpMessage::ChangeN)
         .unwrap_or(SongOpMessage::Null)
 }
 // A wrapper made for recursive song operations
-const CONSTRUCTOR_CHOICES: [&'static str; 7] = [
+const CONSTRUCTOR_CHOICES: [&str; 7] = [
     "Play Once",
     "Loop N Times",
     "Stretch",
@@ -111,9 +123,13 @@ impl Default for SongOpConstructor {
         }
     }
 }
-
 impl SongOpConstructor {
-    fn header(&self, closable: bool) -> Row<'_, SongOpMessage, Theme, Renderer> {
+    fn header<'a>(
+        &'a self,
+        song_map: &'a SongMap,
+        scheme: &FullYtmrsScheme,
+        closable: bool,
+    ) -> Row<'_, SongOpMessage, Theme, Renderer> {
         let child: Element<SongOpMessage> = match self.collapsed {
             // show the operation controls
             false => row![pick_list(
@@ -132,23 +148,28 @@ impl SongOpConstructor {
                 ),
                 _ => None,
             })
+            .push(Space::with_width(Length::Fill))
             .push(button("+").on_press(SongOpMessage::NewGroup))
             .into(),
 
             // Show a basic view of data
-            true => text(format!(
-                "{} - {} songs",
-                self.operation.as_str(),
-                self.list.len()
-            ))
+            true => row![
+                text(format!(
+                    "  {} - {} songs",
+                    self.operation.as_str(),
+                    self.list.len()
+                ))
+                .vertical_alignment(Vertical::Center),
+                Space::with_width(Length::Fill)
+            ]
             .into(),
         };
 
         row![]
             .push_maybe(match self.collapsible {
                 true => match self.collapsed {
-                    true => Some(button(">").on_press(SongOpMessage::Uncollapse)),
-                    false => Some(button("v").on_press(SongOpMessage::Collapse)),
+                    true => Some(button(">").on_press(SongOpMessage::Uncollapse).width(30)),
+                    false => Some(button("v").on_press(SongOpMessage::Collapse).width(30)),
                 },
                 false => None,
             })
@@ -157,20 +178,8 @@ impl SongOpConstructor {
                 false => None,
                 true => Some(button("x").on_press(SongOpMessage::CloseSelf)),
             })
-    }
-
-    pub fn view<'a>(
-        &'a self,
-        song_map: &'a SongMap,
-        scheme: &FullYtmrsScheme,
-    ) -> Element<SongOpMessage> {
-        column![self.header(false).width(Length::Fill)]
-            .push_maybe(match self.collapsed {
-                true => None,
-                false => Some(self.get_children(song_map, scheme)),
-            })
-            .width(Length::Fill)
-            .into()
+            .spacing(0)
+            .align_items(iced::Alignment::Center)
     }
 
     fn get_children<'a>(
@@ -196,12 +205,26 @@ impl SongOpConstructor {
         .width(Length::Fill)
     }
 
+    pub fn view<'a>(
+        &'a self,
+        song_map: &'a SongMap,
+        scheme: &FullYtmrsScheme,
+    ) -> Element<SongOpMessage> {
+        column![self.header(song_map, scheme, false).width(Length::Fill)]
+            .push_maybe(match self.collapsed {
+                true => None,
+                false => Some(self.get_children(song_map, scheme)),
+            })
+            .width(Length::Fill)
+            .into()
+    }
+
     pub fn view_nested<'a>(
         &'a self,
         song_map: &'a SongMap,
         scheme: &FullYtmrsScheme,
     ) -> Element<SongOpMessage> {
-        column![self.header(true).width(Length::Fill)]
+        column![self.header(song_map, scheme, true).width(Length::Fill)]
             .push_maybe(match self.collapsed {
                 true => None,
                 false => Some(self.get_children(song_map, scheme)),
@@ -215,7 +238,6 @@ impl SongOpConstructor {
     }
 
     pub fn update(&mut self, msg: SongOpMessage) -> Cm<SongOpMessage> {
-        println!["{msg:#?}"];
         match msg {
             SongOpMessage::CloseSelf => Cm::none(),
             SongOpMessage::Add(item) => {
@@ -229,12 +251,13 @@ impl SongOpConstructor {
             SongOpMessage::ItemMessage(idx, msg) => {
                 let item = &mut self.list[idx];
                 match item {
-                    ConstructorItem::Song(id) => match msg {
+                    ConstructorItem::Song(_id) => match msg {
                         CItemMessage::Song(msg) => match msg {
                             ClosableSongMessage::Closed => {
                                 self.list.remove(idx);
                                 Cm::none()
                             }
+                            ClosableSongMessage::Clicked => todo!(),
                         },
                         CItemMessage::Operation(_) => todo!(), // Uh oh!!! This should be impossible!!!
                     },
@@ -280,6 +303,27 @@ impl SongOpConstructor {
             }
             // Pointer for things like inputting a non-integer value into the "N" field.
             SongOpMessage::Null => Cm::none(),
+        }
+    }
+
+    pub fn build(&self) -> RecursiveSongOp {
+        let children: Vec<RecursiveSongOp> = self
+            .list
+            .iter()
+            .map(|item| match item {
+                ConstructorItem::Song(id) => RecursiveSongOp::SinglePlay(id.clone()),
+                ConstructorItem::Operation(op) => op.build(),
+            })
+            .collect();
+
+        match &self.operation {
+            ActualRecursiveOps::PlayOnce => RecursiveSongOp::PlayOnce(children),
+            ActualRecursiveOps::LoopNTimes => RecursiveSongOp::LoopNTimes(children, self.n),
+            ActualRecursiveOps::Stretch => RecursiveSongOp::Stretch(children, self.n),
+            ActualRecursiveOps::InfiniteLoop => RecursiveSongOp::InfiniteLoop(children),
+            ActualRecursiveOps::RandomPlay => RecursiveSongOp::RandomPlay(children),
+            ActualRecursiveOps::SingleRandom => RecursiveSongOp::SingleRandom(children),
+            ActualRecursiveOps::InfiniteRandom => RecursiveSongOp::InfiniteRandom(children),
         }
     }
 }
