@@ -1,6 +1,6 @@
 use iced::{
     alignment::Vertical,
-    widget::{button, column, container, row, text, Image, Row},
+    widget::{button, column, container, container::Id as CId, row, text, Image, Row},
     Alignment, Command as Cm, Element, Length,
 };
 
@@ -32,9 +32,6 @@ impl Default for SongId {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Song {
     #[serde(skip)]
-    pub id: SongId,
-
-    #[serde(skip)]
     pub thumbnail: ThumbnailState,
 
     pub data: YTSong,
@@ -43,7 +40,6 @@ pub struct Song {
 impl Song {
     pub fn new(song: YTSong) -> Self {
         Self {
-            id: SongId::default(),
             thumbnail: ThumbnailState::Unknown,
             data: song,
         }
@@ -117,13 +113,14 @@ impl Song {
         //     // .style(move |_theme, status| update_song_button(song_appearance, status))
         //     .padding(0)
         //     .into()
-        container(self.img_and_data(100, 100))
-            .padding(0)
-            .id(self.id.0.clone())
-            .into()
+        container(self.img_and_data(100, 100)).padding(0).into()
     }
 
-    pub fn view_closable(&self, appearance: &SongAppearance) -> Element<ClosableSongMessage> {
+    pub fn view_closable(
+        &self,
+        id: CId,
+        appearance: &SongAppearance,
+    ) -> Element<ClosableSongMessage> {
         let song_appearance = appearance.0;
         let img_and_data = self.img_and_data(75, 75);
         container(
@@ -142,7 +139,7 @@ impl Song {
             .style(move |_t, status| update_song_button(song_appearance, status))
             .on_press(ClosableSongMessage::Clicked),
         )
-        .id(self.id.0.clone())
+        .id(id)
         .into()
     }
 

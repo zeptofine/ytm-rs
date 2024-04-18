@@ -17,7 +17,7 @@ use crate::{
     settings::YTMRSettings,
     song::{Song, SongMessage},
     song_operations::{ConstructorItem, SongOpMessage},
-    styling::{color_to_argb, update_scrollable, BasicYtmrsScheme, FullYtmrsScheme},
+    styling::{color_to_argb, BasicYtmrsScheme, FullYtmrsScheme},
     thumbnails::ThumbnailState,
 };
 
@@ -189,12 +189,6 @@ impl Ytmrs {
             .into()
         });
 
-        let song_list = container(column(songs))
-            .width(Length::Fill)
-            .max_width(400)
-            .padding(0)
-            .align_x(Horizontal::Left);
-
         let constructor = scrollable(
             self.settings
                 .operation_constructor
@@ -204,7 +198,16 @@ impl Ytmrs {
         .height(Length::Fill)
         .width(Length::Fill);
 
-        column![input, row![scrollable(song_list), constructor]]
+        let song_list = scrollable(
+            container(column(songs))
+                .width(Length::Fill)
+                .max_width(400)
+                .padding(0)
+                .align_x(Horizontal::Left),
+        )
+        .style(scheme.scrollable_style.update());
+
+        column![input, row![song_list, constructor]]
             .align_items(Alignment::Center)
             .spacing(20)
             .padding(10)
@@ -220,7 +223,7 @@ impl Ytmrs {
                         // Add song to queue
                         self.settings
                             .operation_constructor
-                            .push(ConstructorItem::Song(key.clone()));
+                            .push(ConstructorItem::new_song(key.clone()));
 
                         Cm::batch([
                             // Change background color to indicate the playing song
@@ -342,12 +345,8 @@ impl Ytmrs {
                     ConstructorItem::Operation(self.settings.operation_constructor.clone());
                 let mut zones = zones;
                 zones.reverse();
-                if let Some((id, _r)) = zones
-                    .iter()
-                    .find(|(id, _r)| top.item_has_id(&self.settings.saved_songs, id))
-                {
-                    let result =
-                        top.push_to_id(id, &self.settings.saved_songs, ConstructorItem::Song(key));
+                if let Some((id, _r)) = zones.iter().find(|(id, _r)| top.item_has_id(id)) {
+                    let result = top.push_to_id(id, ConstructorItem::new_song(key));
                     println!["{:?}", result];
 
                     // This should always be an operation

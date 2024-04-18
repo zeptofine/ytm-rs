@@ -1,14 +1,17 @@
 use iced::{
     advanced::widget::Id as WId,
     alignment::Vertical,
-    widget::{button, column, container, pick_list, row, text, text_input, Column, Row, Space},
+    widget::{
+        button, column, container, container::Id as CId, pick_list, row, text, text_input, Column,
+        Row, Space,
+    },
     Command as Cm, Element, Length, Renderer, Theme,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
     settings::{SongID, SongMap},
-    song::ClosableSongMessage,
+    song::{ClosableSongMessage, SongId},
     styling::FullYtmrsScheme,
 };
 
@@ -53,7 +56,7 @@ impl ActualRecursiveOps {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ConstructorItem {
-    Song(SongID),
+    Song(SongID, #[serde(skip)] SongId),
     Operation(SongOpConstructor),
 }
 
@@ -61,29 +64,28 @@ pub enum ConstructorItem {
 pub enum PushErr {}
 
 impl ConstructorItem {
+    pub fn new_song(song: SongID) -> Self {
+        Self::Song(song, SongId::default())
+    }
+
     // TODO: These methods are ass
 
-    pub fn push_to_id(
-        &mut self,
-        id: &WId,
-        song_map: &SongMap,
-        item: ConstructorItem,
-    ) -> Result<(), PushErr> {
+    pub fn push_to_id(&mut self, id: &WId, item: ConstructorItem) -> Result<(), PushErr> {
         println!["{:?}", self];
         match self {
-            ConstructorItem::Song(s) => todo!(),
+            ConstructorItem::Song(s, _) => todo!(),
             ConstructorItem::Operation(op) => {
                 if WId::from(op.id.0.clone()) == *id {
                     op.push(item)
                 } else {
                     for (idx, child) in op.list.iter_mut().enumerate() {
                         println!["Child: {:#?}", child];
-                        if child.item_has_id(song_map, id) {
+                        if child.item_has_id(id) {
                             // If the child is a song, put the new song before it
-                            if let ConstructorItem::Song(_) = child {
+                            if let ConstructorItem::Song(_, _) = child {
                                 op.insert(idx, item);
                             } else {
-                                child.push_to_id(id, song_map, item)?;
+                                child.push_to_id(id, item)?;
                             }
 
                             break;
@@ -95,18 +97,22 @@ impl ConstructorItem {
         Ok(())
     }
 
-    pub fn item_has_id(&mut self, song_map: &SongMap, id: &WId) -> bool {
+    pub fn item_has_id(&mut self, id: &WId) -> bool {
         match self {
-            ConstructorItem::Song(ref key) if WId::from(song_map[key].id.0.clone()) == *id => true,
+            ConstructorItem::Song(ref key, sid) => {
+                let from = WId::from(sid.0.clone());
+                println!["Comparing {:?} and {:?}", from, id];
+                if from == *id {
+                    true
+                } else {
+                    false
+                }
+            }
             ConstructorItem::Operation(op) => {
                 if WId::from(op.id.0.clone()) == *id {
                     true
                 } else {
-                    op.list
-                        .iter_mut()
-                        .map(|i| i.item_has_id(song_map, id))
-                        .count()
-                        > 0
+                    op.list.iter_mut().map(|i| i.item_has_id(id)).count() > 0
                 }
             }
             _ => false,
@@ -264,8 +270,8 @@ impl SongOpConstructor {
         scheme: &FullYtmrsScheme,
     ) -> Row<'_, SongOpMessage, Theme, Renderer> {
         let items = self.list.iter().enumerate().map(|(idx, item)| match item {
-            ConstructorItem::Song(id) => song_map[id]
-                .view_closable(&scheme.song_appearance)
+            ConstructorItem::Song(key, sid) => song_map[key]
+                .view_closable(sid.0.clone(), &scheme.song_appearance)
                 .map(move |msg| SongOpMessage::ItemMessage(idx, CItemMessage::Song(msg))),
             ConstructorItem::Operation(constructor) => {
                 constructor.view_nested(song_map, scheme).map(move |msg| {
@@ -337,7 +343,7 @@ impl SongOpConstructor {
             SongOpMessage::ItemMessage(idx, msg) => {
                 let item = &mut self.list[idx];
                 match item {
-                    ConstructorItem::Song(_id) => match msg {
+                    ConstructorItem::Song(key, sid) => match msg {
                         CItemMessage::Song(msg) => match msg {
                             ClosableSongMessage::Closed => {
                                 self.list.remove(idx);
@@ -404,7 +410,7 @@ impl SongOpConstructor {
             .list
             .iter()
             .map(|item| match item {
-                ConstructorItem::Song(id) => RecursiveSongOp::SinglePlay(id.clone()),
+                ConstructorItem::Song(key, id) => RecursiveSongOp::SinglePlay(key.clone()),
                 ConstructorItem::Operation(op) => op.build(),
             })
             .collect();

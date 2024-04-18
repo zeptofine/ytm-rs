@@ -7,6 +7,8 @@ use iced::{
     Background, Border, Color, Theme,
 };
 
+type StylyFunc<Status, Style> = Box<dyn Fn(&Theme, Status) -> Style>;
+
 #[derive(Debug, Clone)]
 pub struct SongAppearance(pub button::Style);
 impl Default for SongAppearance {
@@ -65,40 +67,41 @@ impl Default for ScrollableStyle {
         })
     }
 }
-pub fn update_scrollable(
-    appearance: scrollable::Style,
-    status: scrollable::Status,
-) -> scrollable::Style {
-    let mut appearance = appearance;
-    match status {
-        scrollable::Status::Active => {}
-        scrollable::Status::Hovered {
-            is_horizontal_scrollbar_hovered: _,
-            is_vertical_scrollbar_hovered: vert,
-        } => {
-            if vert {
-                appearance.vertical_scrollbar.scroller.color = Color::WHITE;
-                appearance.vertical_scrollbar.border = Border::rounded(8)
-                    .with_width(1)
-                    .with_color(Color::new(1., 1., 1., 0.01));
-            } else {
-                appearance.vertical_scrollbar.scroller.color = Color::new(1., 1., 1., 0.05);
+impl ScrollableStyle {
+    pub fn update(self) -> StylyFunc<scrollable::Status, scrollable::Style> {
+        Box::new(move |_t, status| {
+            let mut style = self.0;
+            match status {
+                scrollable::Status::Active => {}
+                scrollable::Status::Hovered {
+                    is_horizontal_scrollbar_hovered: _,
+                    is_vertical_scrollbar_hovered: vert,
+                } => {
+                    if vert {
+                        style.vertical_scrollbar.scroller.color = Color::WHITE;
+                        style.vertical_scrollbar.border = Border::rounded(8)
+                            .with_width(1)
+                            .with_color(Color::new(1., 1., 1., 0.01));
+                    } else {
+                        style.vertical_scrollbar.scroller.color = Color::new(1., 1., 1., 0.05);
+                    }
+                }
+                scrollable::Status::Dragged {
+                    is_horizontal_scrollbar_dragged: _,
+                    is_vertical_scrollbar_dragged: vert,
+                } => {
+                    if vert {
+                        style.vertical_scrollbar.scroller.color = Color::WHITE;
+                        style.vertical_scrollbar.scroller.border = Border::rounded(6);
+                        style.vertical_scrollbar.border = Border::rounded(8)
+                            .with_width(2)
+                            .with_color(Color::new(1., 1., 1., 0.02));
+                    }
+                }
             }
-        }
-        scrollable::Status::Dragged {
-            is_horizontal_scrollbar_dragged: _,
-            is_vertical_scrollbar_dragged: vert,
-        } => {
-            if vert {
-                appearance.vertical_scrollbar.scroller.color = Color::WHITE;
-                appearance.vertical_scrollbar.scroller.border = Border::rounded(6);
-                appearance.vertical_scrollbar.border = Border::rounded(8)
-                    .with_width(2)
-                    .with_color(Color::new(1., 1., 1., 0.02));
-            }
-        }
+            style
+        })
     }
-    appearance
 }
 
 #[derive(Debug, Clone)]
@@ -128,7 +131,7 @@ impl From<Color> for PickListStyle {
     }
 }
 impl PickListStyle {
-    pub fn update(self) -> Box<dyn Fn(&Theme, pick_list::Status) -> pick_list::Style> {
+    pub fn update(self) -> StylyFunc<pick_list::Status, pick_list::Style> {
         Box::new(move |_theme: &Theme, status: pick_list::Status| {
             let mut style = self.0;
 
