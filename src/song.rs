@@ -1,6 +1,6 @@
 use iced::{
     alignment::Vertical,
-    widget::{button, column, row, text, Image, Row},
+    widget::{button, column, container, row, text, Image, Row},
     Alignment, Command as Cm, Element, Length,
 };
 
@@ -21,8 +21,19 @@ use crate::{
 // };
 // use crate::response_types::UrlString;
 
+#[derive(Debug, Clone)]
+pub struct SongId(pub container::Id);
+impl Default for SongId {
+    fn default() -> Self {
+        Self(container::Id::unique())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Song {
+    #[serde(skip)]
+    pub id: SongId,
+
     #[serde(skip)]
     pub thumbnail: ThumbnailState,
 
@@ -32,6 +43,7 @@ pub struct Song {
 impl Song {
     pub fn new(song: YTSong) -> Self {
         Self {
+            id: SongId::default(),
             thumbnail: ThumbnailState::Unknown,
             data: song,
         }
@@ -49,17 +61,16 @@ impl Song {
             _ => Cm::none(),
         }])
     }
-
-    fn get_img<Msg>(&self) -> Element<Msg> {
+    fn get_img<Msg>(&self, height: u16, width: u16) -> Element<Msg> {
         match &self.thumbnail {
             ThumbnailState::Downloaded { path: _, handle } => Image::new(handle.clone())
-                .height(100)
-                .width(100)
+                .height(height)
+                .width(width)
                 .content_fit(iced::ContentFit::Cover)
                 .into(),
             _ => text("<...>")
-                .height(100)
-                .width(100)
+                .height(height)
+                .width(width)
                 .vertical_alignment(Vertical::Center)
                 .into(),
         }
@@ -82,9 +93,13 @@ impl Song {
         }
     }
 
-    fn img_and_data<'a, M: 'a>(&'a self) -> Row<'a, M, iced::Theme, iced::Renderer> {
+    fn img_and_data<'a, M: 'a>(
+        &'a self,
+        width: u16,
+        height: u16,
+    ) -> Row<'a, M, iced::Theme, iced::Renderer> {
         row![
-            self.get_img(),
+            self.get_img(height, width),
             column![
                 text(&self.data.title),
                 text(self.format_duration()),
@@ -98,30 +113,36 @@ impl Song {
 
     pub fn view(&self, appearance: &SongAppearance) -> Element<SongMessage> {
         let song_appearance = appearance.0;
-        button::Button::new(self.img_and_data())
-            .style(move |_theme, status| update_song_button(song_appearance, status))
+        // button::Button::new()
+        //     // .style(move |_theme, status| update_song_button(song_appearance, status))
+        //     .padding(0)
+        //     .into()
+        container(self.img_and_data(100, 100))
             .padding(0)
-            .on_press(SongMessage::Clicked)
+            .id(self.id.0.clone())
             .into()
     }
 
     pub fn view_closable(&self, appearance: &SongAppearance) -> Element<ClosableSongMessage> {
         let song_appearance = appearance.0;
-        let img_and_data = self.img_and_data();
-        button(
-            row![
-                img_and_data,
-                button("x")
-                    .on_press(ClosableSongMessage::Closed)
-                    .style(move |_t, status| update_song_button(song_appearance, status))
-            ]
-            .align_items(Alignment::Center)
+        let img_and_data = self.img_and_data(75, 75);
+        container(
+            button(
+                row![
+                    img_and_data,
+                    button("x")
+                        .on_press(ClosableSongMessage::Closed)
+                        .style(move |_t, status| update_song_button(song_appearance, status))
+                ]
+                .align_items(Alignment::Center)
+                .padding(0)
+                .spacing(0),
+            )
             .padding(0)
-            .spacing(0),
+            .style(move |_t, status| update_song_button(song_appearance, status))
+            .on_press(ClosableSongMessage::Clicked),
         )
-        .padding(0)
-        .style(move |_t, status| update_song_button(song_appearance, status))
-        .on_press(ClosableSongMessage::Clicked)
+        .id(self.id.0.clone())
         .into()
     }
 

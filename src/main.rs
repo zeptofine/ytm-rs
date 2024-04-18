@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use iced::Color;
-use iced::{alignment::Horizontal, keyboard, Command as Cm, Element, Length, Subscription};
+use iced::{alignment::Horizontal, Command as Cm, Element, Length, Subscription};
 use iced::{
     theme::{Palette, Theme},
     widget::{button, column, container, text},
@@ -85,34 +85,7 @@ impl Main {
     }
 
     fn subscription(&self) -> Subscription<YTMRSMessage> {
-        // Subscription::batch([
-        //     keyboard::on_key_press(|key_code, modifiers| {
-        //         println!["{:#?} {:#?}", key_code, modifiers];
-        //         if !(modifiers.command()) {
-        //             return None;
-        //         }
-        //         Self::handle_hotkey(key_code, modifiers)
-        //     }),
-        //     keyboard::on_key_release(|kcode, modifiers| {
-        //         println!["{:#?} {:#?}", kcode, modifiers];
-
-        //         None
-        //     }),
-        //     match &self.state {
-        //         Some(state) => state.ytmrs.subscription().map(YTMRSMessage::MainMessage),
-        //         None => Subscription::none(),
-        //     },
-        // ])
         Subscription::none()
-    }
-
-    fn handle_hotkey(key: keyboard::Key, modifiers: keyboard::Modifiers) -> Option<YTMRSMessage> {
-        if key == keyboard::Key::Character("s".into()) && modifiers.command() {
-            Some(YTMRSMessage::Save)
-        } else {
-            println!["{key:?} {modifiers:?}"];
-            None
-        }
     }
 
     fn update(&mut self, message: YTMRSMessage) -> Cm<YTMRSMessage> {

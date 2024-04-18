@@ -3,9 +3,9 @@ use std::fmt::Debug;
 use iced::{
     alignment::{Alignment, Horizontal},
     widget::{column, container, row, scrollable, text_input},
-    Command as Cm, Element, Length, Subscription,
+    Command as Cm, Element, Length,
 };
-use iced_drop::droppable;
+use iced_drop::{droppable, zones_on_point};
 use once_cell::sync::Lazy;
 use reqwest::{Client, Url};
 use rodio::{OutputStream, OutputStreamHandle, Sink};
@@ -87,6 +87,9 @@ pub struct Ytmrs {
 
 #[derive(Debug, Clone)]
 pub enum YtmrsMsg {
+    Drop(String, iced::Point, iced::Rectangle),
+    HandleZones(String, Vec<(iced::advanced::widget::Id, iced::Rectangle)>),
+
     SongMessage(String, SongMessage),
     InputMessage(InputMessage),
 
@@ -173,23 +176,24 @@ impl Ytmrs {
 
     pub fn prepare_to_save(&mut self) {}
 
-    pub fn subscription(&self) -> Subscription<YtmrsMsg> {
-        Subscription::none()
-    }
-
     pub fn view(&self, scheme: FullYtmrsScheme) -> Element<YtmrsMsg> {
         let input = self.inputs.view().map(YtmrsMsg::InputMessage);
 
-        let songs = self
-            .settings
-            .queue
-            .iter()
-            .map(|song| {
+        let songs = self.settings.queue.iter().map(|song| {
+            droppable(
                 self.settings.saved_songs[song]
                     .view(&scheme.song_appearance)
-                    .map(|msg| YtmrsMsg::SongMessage(song.clone(), msg))
-            })
-            .map(|element| droppable(element.into()).into());
+                    .map(|msg| YtmrsMsg::SongMessage(song.clone(), msg)),
+            )
+            .on_drop(move |pt, rec| YtmrsMsg::Drop(song.clone(), pt, rec))
+            .into()
+        });
+
+        let song_list = container(column(songs))
+            .width(Length::Fill)
+            .max_width(400)
+            .padding(0)
+            .align_x(Horizontal::Left);
 
         let constructor = scrollable(
             self.settings
@@ -197,25 +201,14 @@ impl Ytmrs {
                 .view(&self.settings.saved_songs, &scheme)
                 .map(YtmrsMsg::OpConstructorMsg),
         )
+        .height(Length::Fill)
         .width(Length::Fill);
 
-        column![
-            input,
-            row![
-                scrollable(
-                    container(column(songs))
-                        .width(Length::Fill)
-                        .max_width(400)
-                        .padding(0)
-                        .align_x(Horizontal::Left)
-                ),
-                constructor
-            ]
-        ]
-        .align_items(Alignment::Center)
-        .spacing(20)
-        .padding(10)
-        .into()
+        column![input, row![scrollable(song_list), constructor]]
+            .align_items(Alignment::Center)
+            .spacing(20)
+            .padding(10)
+            .into()
     }
 
     pub fn update(&mut self, message: YtmrsMsg) -> Cm<YtmrsMsg> {
@@ -337,6 +330,34 @@ impl Ytmrs {
                 .operation_constructor
                 .update(msg)
                 .map(YtmrsMsg::OpConstructorMsg),
+
+            YtmrsMsg::Drop(key, point, _rec) => zones_on_point(
+                move |zones| YtmrsMsg::HandleZones(key.clone(), zones),
+                point,
+                None,
+                None,
+            ),
+            YtmrsMsg::HandleZones(key, zones) => {
+                let mut top =
+                    ConstructorItem::Operation(self.settings.operation_constructor.clone());
+                let mut zones = zones;
+                zones.reverse();
+                if let Some((id, _r)) = zones
+                    .iter()
+                    .find(|(id, _r)| top.item_has_id(&self.settings.saved_songs, id))
+                {
+                    let result =
+                        top.push_to_id(id, &self.settings.saved_songs, ConstructorItem::Song(key));
+                    println!["{:?}", result];
+
+                    // This should always be an operation
+                    if let ConstructorItem::Operation(op) = top {
+                        self.settings.operation_constructor = op;
+                    }
+                }
+
+                Cm::none()
+            }
         }
     }
 

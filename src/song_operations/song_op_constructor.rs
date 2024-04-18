@@ -1,4 +1,5 @@
 use iced::{
+    advanced::widget::Id as WId,
     alignment::Vertical,
     widget::{button, column, container, pick_list, row, text, text_input, Column, Row, Space},
     Command as Cm, Element, Length, Renderer, Theme,
@@ -54,6 +55,63 @@ impl ActualRecursiveOps {
 pub enum ConstructorItem {
     Song(SongID),
     Operation(SongOpConstructor),
+}
+
+#[derive(Debug)]
+pub enum PushErr {}
+
+impl ConstructorItem {
+    // TODO: These methods are ass
+
+    pub fn push_to_id(
+        &mut self,
+        id: &WId,
+        song_map: &SongMap,
+        item: ConstructorItem,
+    ) -> Result<(), PushErr> {
+        println!["{:?}", self];
+        match self {
+            ConstructorItem::Song(s) => todo!(),
+            ConstructorItem::Operation(op) => {
+                if WId::from(op.id.0.clone()) == *id {
+                    op.push(item)
+                } else {
+                    for (idx, child) in op.list.iter_mut().enumerate() {
+                        println!["Child: {:#?}", child];
+                        if child.item_has_id(song_map, id) {
+                            // If the child is a song, put the new song before it
+                            if let ConstructorItem::Song(_) = child {
+                                op.insert(idx, item);
+                            } else {
+                                child.push_to_id(id, song_map, item)?;
+                            }
+
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn item_has_id(&mut self, song_map: &SongMap, id: &WId) -> bool {
+        match self {
+            ConstructorItem::Song(ref key) if WId::from(song_map[key].id.0.clone()) == *id => true,
+            ConstructorItem::Operation(op) => {
+                if WId::from(op.id.0.clone()) == *id {
+                    true
+                } else {
+                    op.list
+                        .iter_mut()
+                        .map(|i| i.item_has_id(song_map, id))
+                        .count()
+                        > 0
+                }
+            }
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -253,12 +311,16 @@ impl SongOpConstructor {
                 })
                 .width(Length::Fill),
         )
-        .id(container::Id::new("drop_zone"))
+        .id(self.id.0.clone())
         .into()
     }
 
     pub fn push(&mut self, item: ConstructorItem) {
-        self.list.push(item)
+        self.list.push(item);
+    }
+
+    pub fn insert(&mut self, idx: usize, item: ConstructorItem) {
+        self.list.insert(idx, item)
     }
 
     pub fn update(&mut self, msg: SongOpMessage) -> Cm<SongOpMessage> {

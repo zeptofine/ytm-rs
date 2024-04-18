@@ -129,7 +129,7 @@ impl From<Color> for PickListStyle {
 }
 impl PickListStyle {
     pub fn update(self) -> Box<dyn Fn(&Theme, pick_list::Status) -> pick_list::Style> {
-        Box::new(move |theme: &Theme, status: pick_list::Status| {
+        Box::new(move |_theme: &Theme, status: pick_list::Status| {
             let mut style = self.0;
 
             match status {
