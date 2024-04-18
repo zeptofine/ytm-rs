@@ -1,6 +1,6 @@
 use iced::{
     alignment::Vertical,
-    widget::{button, column, pick_list, row, text, text_input, Column, Row, Space},
+    widget::{button, column, container, pick_list, row, text, text_input, Column, Row, Space},
     Command as Cm, Element, Length, Renderer, Theme,
 };
 use serde::{Deserialize, Serialize};
@@ -106,8 +106,18 @@ const CONSTRUCTOR_CHOICES: [&str; 7] = [
     "Infinite Random",
 ];
 
+#[derive(Debug, Clone)]
+pub struct SongOpId(pub container::Id);
+impl Default for SongOpId {
+    fn default() -> Self {
+        Self(container::Id::unique())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SongOpConstructor {
+    #[serde(skip)]
+    id: SongOpId,
     operation: ActualRecursiveOps,
     list: Vec<ConstructorItem>,
     collapsible: bool,
@@ -118,6 +128,7 @@ pub struct SongOpConstructor {
 impl Default for SongOpConstructor {
     fn default() -> Self {
         Self {
+            id: Default::default(),
             operation: ActualRecursiveOps::PlayOnce,
             list: vec![],
             collapsible: true,
@@ -217,13 +228,16 @@ impl SongOpConstructor {
         song_map: &'a SongMap,
         scheme: &FullYtmrsScheme,
     ) -> Element<SongOpMessage> {
-        column![self.header(scheme, false).width(Length::Fill)]
-            .push_maybe(match self.collapsed {
-                true => None,
-                false => Some(self.get_children(song_map, scheme)),
-            })
-            .width(Length::Fill)
-            .into()
+        container(
+            column![self.header(scheme, false).width(Length::Fill)]
+                .push_maybe(match self.collapsed {
+                    true => None,
+                    false => Some(self.get_children(song_map, scheme)),
+                })
+                .width(Length::Fill),
+        )
+        .id(self.id.0.clone())
+        .into()
     }
 
     pub fn view_nested<'a>(
@@ -231,13 +245,16 @@ impl SongOpConstructor {
         song_map: &'a SongMap,
         scheme: &FullYtmrsScheme,
     ) -> Element<SongOpMessage> {
-        column![self.header(scheme, true).width(Length::Fill)]
-            .push_maybe(match self.collapsed {
-                true => None,
-                false => Some(self.get_children(song_map, scheme)),
-            })
-            .width(Length::Fill)
-            .into()
+        container(
+            column![self.header(scheme, true).width(Length::Fill)]
+                .push_maybe(match self.collapsed {
+                    true => None,
+                    false => Some(self.get_children(song_map, scheme)),
+                })
+                .width(Length::Fill),
+        )
+        .id(container::Id::new("drop_zone"))
+        .into()
     }
 
     pub fn push(&mut self, item: ConstructorItem) {

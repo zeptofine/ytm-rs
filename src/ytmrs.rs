@@ -180,11 +180,16 @@ impl Ytmrs {
     pub fn view(&self, scheme: FullYtmrsScheme) -> Element<YtmrsMsg> {
         let input = self.inputs.view().map(YtmrsMsg::InputMessage);
 
-        let songs = self.settings.queue.iter().map(|song| {
-            self.settings.saved_songs[song]
-                .view(&scheme.song_appearance)
-                .map(|msg| YtmrsMsg::SongMessage(song.clone(), msg))
-        });
+        let songs = self
+            .settings
+            .queue
+            .iter()
+            .map(|song| {
+                self.settings.saved_songs[song]
+                    .view(&scheme.song_appearance)
+                    .map(|msg| YtmrsMsg::SongMessage(song.clone(), msg))
+            })
+            .map(|element| droppable(element.into()).into());
 
         let constructor = scrollable(
             self.settings
@@ -203,8 +208,7 @@ impl Ytmrs {
                         .max_width(400)
                         .padding(0)
                         .align_x(Horizontal::Left)
-                )
-                .style(move |_t, s| update_scrollable(scheme.scrollable_style.clone().0, s)),
+                ),
                 constructor
             ]
         ]
