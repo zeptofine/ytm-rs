@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     cache_handlers::{CacheHandle, YtmCache as _},
     response_types::YTSong,
-    styling::{update_song_button, SongAppearance},
+    styling::SongStyle,
     thumbnails::{get_thumbnail, ThumbnailState},
 };
 
@@ -107,38 +107,27 @@ impl Song {
         ]
     }
 
-    pub fn view(&self, appearance: &SongAppearance) -> Element<SongMessage> {
+    pub fn view(&self, appearance: &SongStyle) -> Element<SongMessage> {
         let song_appearance = appearance.0;
-        // button::Button::new()
-        //     // .style(move |_theme, status| update_song_button(song_appearance, status))
-        //     .padding(0)
-        //     .into()
-        container(self.img_and_data(100, 100)).padding(0).into()
+        container(self.img_and_data(100, 100))
+            .style(move |_| song_appearance)
+            .padding(0)
+            .into()
     }
 
-    pub fn view_closable(
-        &self,
-        id: CId,
-        appearance: &SongAppearance,
-    ) -> Element<ClosableSongMessage> {
-        let song_appearance = appearance.0;
+    pub fn view_closable(&self, id: CId, appearance: &SongStyle) -> Element<ClosableSongMessage> {
+        let song_style = appearance.0;
         let img_and_data = self.img_and_data(75, 75);
         container(
-            button(
-                row![
-                    img_and_data,
-                    button("x")
-                        .on_press(ClosableSongMessage::Closed)
-                        .style(move |_t, status| update_song_button(song_appearance, status))
-                ]
-                .align_items(Alignment::Center)
-                .padding(0)
-                .spacing(0),
-            )
+            row![
+                img_and_data,
+                button("x").on_press(ClosableSongMessage::Closed)
+            ]
+            .align_items(Alignment::Center)
             .padding(0)
-            .style(move |_t, status| update_song_button(song_appearance, status))
-            .on_press(ClosableSongMessage::Clicked),
+            .spacing(0),
         )
+        .style(move |_| song_style)
         .id(id)
         .into()
     }
@@ -154,7 +143,6 @@ impl Song {
 
 #[derive(Debug, Clone)]
 pub enum SongMessage {
-    Clicked,
     ThumbnailGathered(ThumbnailState),
     ThumnailGatherFailure,
 }

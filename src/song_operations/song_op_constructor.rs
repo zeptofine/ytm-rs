@@ -102,11 +102,7 @@ impl ConstructorItem {
             ConstructorItem::Song(ref key, sid) => {
                 let from = WId::from(sid.0.clone());
                 println!["Comparing {:?} and {:?}", from, id];
-                if from == *id {
-                    true
-                } else {
-                    false
-                }
+                from == *id
             }
             ConstructorItem::Operation(op) => {
                 if WId::from(op.id.0.clone()) == *id {
@@ -410,7 +406,7 @@ impl SongOpConstructor {
             .list
             .iter()
             .map(|item| match item {
-                ConstructorItem::Song(key, id) => RecursiveSongOp::SinglePlay(key.clone()),
+                ConstructorItem::Song(key, _) => RecursiveSongOp::SinglePlay(key.clone()),
                 ConstructorItem::Operation(op) => op.build(),
             })
             .collect();

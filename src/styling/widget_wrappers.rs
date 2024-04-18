@@ -10,29 +10,15 @@ use iced::{
 type StylyFunc<Status, Style> = Box<dyn Fn(&Theme, Status) -> Style>;
 
 #[derive(Debug, Clone)]
-pub struct SongAppearance(pub button::Style);
-impl Default for SongAppearance {
+pub struct SongStyle(pub container::Style);
+impl Default for SongStyle {
     fn default() -> Self {
-        Self(button::Style {
+        Self(container::Style {
             background: None,
-            text_color: Color::WHITE,
+            text_color: Some(Color::WHITE),
             ..Default::default()
         })
     }
-}
-pub fn update_song_button(appearance: button::Style, status: button::Status) -> button::Style {
-    let mut appearance = appearance;
-    match status {
-        button::Status::Active => {}
-        button::Status::Hovered => {
-            appearance.border = Border::rounded(5)
-                .with_color(Color::new(1., 1., 1., 0.025))
-                .with_width(2)
-        }
-        button::Status::Pressed => {}
-        button::Status::Disabled => {}
-    }
-    appearance
 }
 
 #[derive(Debug, Clone)]

@@ -9,8 +9,7 @@ use material_colors::{color::Argb, quantize::QuantizerWsmeans, score::Score, the
 
 use crate::{
     styling::{
-        argb_to_color, ease_out_cubic, interpolate_color, pixel_to_argb, ScrollableStyle,
-        SongAppearance,
+        argb_to_color, ease_out_cubic, interpolate_color, pixel_to_argb, ScrollableStyle, SongStyle,
     },
     BACKGROUND_TRANSITION_DURATION, BACKGROUND_TRANSITION_RATE,
 };
@@ -127,7 +126,7 @@ impl Interpolable for BasicYtmrsScheme {
 #[derive(Debug, Clone, Default)]
 pub struct FullYtmrsScheme {
     pub colors: BasicYtmrsScheme,
-    pub song_appearance: Box<SongAppearance>,
+    pub song_appearance: Box<SongStyle>,
     pub scrollable_style: Box<ScrollableStyle>,
     pub pick_list_style: Box<PickListStyle>,
     pub pick_menu_style: Box<PickMenuStyle>,

@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, pin::pin};
 
 use iced::{
     alignment::{Alignment, Horizontal},
@@ -90,6 +90,7 @@ pub enum YtmrsMsg {
     Drop(String, iced::Point, iced::Rectangle),
     HandleZones(String, Vec<(iced::advanced::widget::Id, iced::Rectangle)>),
 
+    SongClicked(String),
     SongMessage(String, SongMessage),
     InputMessage(InputMessage),
 
@@ -185,6 +186,7 @@ impl Ytmrs {
                     .view(&scheme.song_appearance)
                     .map(|msg| YtmrsMsg::SongMessage(song.clone(), msg)),
             )
+            // .on_click(YtmrsMsg::SongClicked(song.clone()))
             .on_drop(move |pt, rec| YtmrsMsg::Drop(song.clone(), pt, rec))
             .into()
         });
@@ -216,39 +218,38 @@ impl Ytmrs {
 
     pub fn update(&mut self, message: YtmrsMsg) -> Cm<YtmrsMsg> {
         match message {
-            YtmrsMsg::SongMessage(key, msg) => {
+            YtmrsMsg::SongMessage(key, msg) => self
+                .settings
+                .saved_songs
+                .get_mut(&key)
+                .unwrap()
+                .update(msg)
+                .map(move |msg| YtmrsMsg::SongMessage(key.clone(), msg)),
+            YtmrsMsg::SongClicked(key) => {
                 let song = self.settings.saved_songs.get_mut(&key).unwrap();
-                match msg {
-                    SongMessage::Clicked => {
-                        // Add song to queue
-                        self.settings
-                            .operation_constructor
-                            .push(ConstructorItem::new_song(key.clone()));
+                // Add song to queue
+                self.settings
+                    .operation_constructor
+                    .push(ConstructorItem::new_song(key.clone()));
 
-                        Cm::batch([
-                            // Change background color to indicate the playing song
-                            match song.thumbnail.clone() {
-                                ThumbnailState::Unknown => Cm::none(),
-                                ThumbnailState::Downloaded { path, handle: _ } => {
-                                    let handle = self.settings.index.get(&key);
-                                    match &handle.get_color() {
-                                        Some(col) => Cm::perform(
-                                            BasicYtmrsScheme::from_argb(color_to_argb(*col)),
-                                            |scheme| YtmrsMsg::SetNewBackground(key, scheme),
-                                        ),
-                                        None => Cm::perform(
-                                            BasicYtmrsScheme::from_image(path),
-                                            |scheme| YtmrsMsg::SetNewBackground(key, scheme),
-                                        ),
-                                    }
-                                }
-                            },
-                        ])
-                    }
-                    _ => song
-                        .update(msg)
-                        .map(move |msg| YtmrsMsg::SongMessage(key.clone(), msg)),
-                }
+                Cm::batch([
+                    // Change background color to indicate the playing song
+                    match song.thumbnail.clone() {
+                        ThumbnailState::Unknown => Cm::none(),
+                        ThumbnailState::Downloaded { path, handle: _ } => {
+                            let handle = self.settings.index.get(&key);
+                            match &handle.get_color() {
+                                Some(col) => Cm::perform(
+                                    BasicYtmrsScheme::from_argb(color_to_argb(*col)),
+                                    |scheme| YtmrsMsg::SetNewBackground(key, scheme),
+                                ),
+                                None => Cm::perform(BasicYtmrsScheme::from_image(path), |scheme| {
+                                    YtmrsMsg::SetNewBackground(key, scheme)
+                                }),
+                            }
+                        }
+                    },
+                ])
             }
             YtmrsMsg::SetNewBackground(key, scheme) => {
                 // Save primary color to cache for future use
