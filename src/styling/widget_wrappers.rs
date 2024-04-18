@@ -4,24 +4,21 @@ use iced::{
         button, container, pick_list,
         scrollable::{self, Scrollbar, Scroller},
     },
-    Background, Border, Color,
+    Background, Border, Color, Theme,
 };
 
 #[derive(Debug, Clone)]
-pub struct SongAppearance(pub button::Appearance);
+pub struct SongAppearance(pub button::Style);
 impl Default for SongAppearance {
     fn default() -> Self {
-        Self(button::Appearance {
+        Self(button::Style {
             background: None,
             text_color: Color::WHITE,
             ..Default::default()
         })
     }
 }
-pub fn update_song_button(
-    appearance: button::Appearance,
-    status: button::Status,
-) -> button::Appearance {
+pub fn update_song_button(appearance: button::Style, status: button::Status) -> button::Style {
     let mut appearance = appearance;
     match status {
         button::Status::Active => {}
@@ -36,18 +33,12 @@ pub fn update_song_button(
     appearance
 }
 
-// pub fn update_song_list_item_button(
-//     appearance: button::Appearance,
-//     status: button::Status,
-// ) -> button::Appearance {
-// }
-
 #[derive(Debug, Clone)]
-pub struct ScrollableAppearance(pub scrollable::Appearance);
-impl Default for ScrollableAppearance {
+pub struct ScrollableStyle(pub scrollable::Style);
+impl Default for ScrollableStyle {
     fn default() -> Self {
-        Self(scrollable::Appearance {
-            container: container::Appearance {
+        Self(scrollable::Style {
+            container: container::Style {
                 text_color: None,
                 background: None,
                 ..Default::default()
@@ -75,9 +66,9 @@ impl Default for ScrollableAppearance {
     }
 }
 pub fn update_scrollable(
-    appearance: scrollable::Appearance,
+    appearance: scrollable::Style,
     status: scrollable::Status,
-) -> scrollable::Appearance {
+) -> scrollable::Style {
     let mut appearance = appearance;
     match status {
         scrollable::Status::Active => {}
@@ -111,26 +102,57 @@ pub fn update_scrollable(
 }
 
 #[derive(Debug, Clone)]
-pub struct PickListAppearance(pub pick_list::Appearance);
-impl Default for PickListAppearance {
+pub struct PickListStyle(pub pick_list::Style);
+impl Default for PickListStyle {
     fn default() -> Self {
-        Self(pick_list::Appearance {
+        Self(pick_list::Style {
             text_color: Color::WHITE,
             placeholder_color: Color::WHITE,
             handle_color: Color::WHITE,
             background: iced::Background::Color(Color::TRANSPARENT),
             border: Border::rounded(4)
                 .with_width(1)
-                .with_color(Color::new(0.85, 0.85, 0.85, 0.2)),
+                .with_color(Color::new(1., 1., 1., 0.5)),
+        })
+    }
+}
+impl From<Color> for PickListStyle {
+    fn from(value: Color) -> Self {
+        Self(pick_list::Style {
+            text_color: Color::WHITE,
+            placeholder_color: Color::WHITE,
+            handle_color: value,
+            background: iced::Background::Color(Color::TRANSPARENT),
+            border: Border::rounded(4).with_width(2).with_color(value),
+        })
+    }
+}
+impl PickListStyle {
+    pub fn update(self) -> Box<dyn Fn(&Theme, pick_list::Status) -> pick_list::Style> {
+        Box::new(move |theme: &Theme, status: pick_list::Status| {
+            let mut style = self.0;
+
+            match status {
+                pick_list::Status::Active => {}
+                pick_list::Status::Hovered => {
+                    // style.border.color = Color::WHITE;
+                }
+                pick_list::Status::Opened => {
+                    style.background = Background::Color(Color::WHITE);
+                    style.text_color = Color::BLACK;
+                }
+            }
+
+            style
         })
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct PickMenuAppearance(pub menu::Appearance);
-impl Default for PickMenuAppearance {
+pub struct PickMenuStyle(pub menu::Style);
+impl Default for PickMenuStyle {
     fn default() -> Self {
-        Self(menu::Appearance {
+        Self(menu::Style {
             background: Background::Color(Color::BLACK),
             border: Border::rounded(4).with_width(1).with_color(Color::WHITE),
             text_color: Color::WHITE,

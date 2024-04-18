@@ -67,14 +67,17 @@ pub enum SongOpMessage {
     ChangeOperation(ActualRecursiveOps),
     CloseSelf,
     Add(ConstructorItem),
+    Remove(usize),
     NewGroup,
 
     ItemMessage(usize, CItemMessage),
+    Generate,
 
-    Remove(usize),
     Collapse,
     Uncollapse,
+
     ChangeN(u32),
+
     Null,
 }
 
@@ -124,12 +127,14 @@ impl Default for SongOpConstructor {
     }
 }
 impl SongOpConstructor {
-    fn header<'a>(
-        &'a self,
-        song_map: &'a SongMap,
+    fn header(
+        &self,
         scheme: &FullYtmrsScheme,
         closable: bool,
     ) -> Row<'_, SongOpMessage, Theme, Renderer> {
+        let scrollable_style = scheme.scrollable_style.clone();
+        let pick_style = scheme.pick_list_style.clone();
+        let pick_menu_style = scheme.pick_menu_style.clone();
         let child: Element<SongOpMessage> = match self.collapsed {
             // show the operation controls
             false => row![pick_list(
@@ -139,7 +144,8 @@ impl SongOpConstructor {
                     let op = ActualRecursiveOps::from_str(selection).unwrap();
                     SongOpMessage::ChangeOperation(op)
                 },
-            ),]
+            )
+            .style(pick_style.update()),]
             .push_maybe(match self.operation {
                 ActualRecursiveOps::LoopNTimes | ActualRecursiveOps::Stretch => Some(
                     text_input("1", &(format!("{}", self.n)))
@@ -149,6 +155,7 @@ impl SongOpConstructor {
                 _ => None,
             })
             .push(Space::with_width(Length::Fill))
+            .push(button("Generate").on_press(SongOpMessage::Generate))
             .push(button("+").on_press(SongOpMessage::NewGroup))
             .into(),
 
@@ -210,7 +217,7 @@ impl SongOpConstructor {
         song_map: &'a SongMap,
         scheme: &FullYtmrsScheme,
     ) -> Element<SongOpMessage> {
-        column![self.header(song_map, scheme, false).width(Length::Fill)]
+        column![self.header(scheme, false).width(Length::Fill)]
             .push_maybe(match self.collapsed {
                 true => None,
                 false => Some(self.get_children(song_map, scheme)),
@@ -224,7 +231,7 @@ impl SongOpConstructor {
         song_map: &'a SongMap,
         scheme: &FullYtmrsScheme,
     ) -> Element<SongOpMessage> {
-        column![self.header(song_map, scheme, true).width(Length::Fill)]
+        column![self.header(scheme, true).width(Length::Fill)]
             .push_maybe(match self.collapsed {
                 true => None,
                 false => Some(self.get_children(song_map, scheme)),
@@ -301,6 +308,13 @@ impl SongOpConstructor {
                 self.n = n;
                 Cm::none()
             }
+
+            SongOpMessage::Generate => {
+                let ops = self.build();
+                println!["{:#?}", ops];
+                Cm::none()
+            }
+
             // Pointer for things like inputting a non-integer value into the "N" field.
             SongOpMessage::Null => Cm::none(),
         }

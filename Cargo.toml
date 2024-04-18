@@ -18,6 +18,7 @@ serde = { version = "1.0.197", features = ["derive"] }
 serde_json = { version = "1.0.114", features = [] }
 tokio = { version = "1.36.0", features = ["macros", "parking_lot", "time"] }
 uuid = { version = "1.8.0", features = ['v4', 'fast-rng', 'serde'] }
+iced_drop = { git = "https://github.com/zeptofine/iced_drop", version = "0.1.0" }
 
 [dependencies.material-colors]
 git = "https://github.com/Aiving/material-colors"
@@ -26,6 +27,6 @@ features = ["serde", "image"]
 
 [dependencies.iced]
 git = "https://github.com/iced-rs/iced.git"
-rev = "cdb18e610a72b4a025d7e1890140393adee5b087"
+rev = "a05b8044a9a82c1802d4d97f1723e24b9d9dad9c"
 # default-features = false
 features = ["debug", "lazy", "tokio", "image", "canvas", "advanced"]

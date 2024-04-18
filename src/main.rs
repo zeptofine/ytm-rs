@@ -85,24 +85,25 @@ impl Main {
     }
 
     fn subscription(&self) -> Subscription<YTMRSMessage> {
-        Subscription::batch([
-            keyboard::on_key_press(|key_code, modifiers| {
-                println!["{:#?} {:#?}", key_code, modifiers];
-                if !(modifiers.command()) {
-                    return None;
-                }
-                Self::handle_hotkey(key_code, modifiers)
-            }),
-            keyboard::on_key_release(|kcode, modifiers| {
-                println!["{:#?} {:#?}", kcode, modifiers];
+        // Subscription::batch([
+        //     keyboard::on_key_press(|key_code, modifiers| {
+        //         println!["{:#?} {:#?}", key_code, modifiers];
+        //         if !(modifiers.command()) {
+        //             return None;
+        //         }
+        //         Self::handle_hotkey(key_code, modifiers)
+        //     }),
+        //     keyboard::on_key_release(|kcode, modifiers| {
+        //         println!["{:#?} {:#?}", kcode, modifiers];
 
-                None
-            }),
-            match &self.state {
-                Some(state) => state.ytmrs.subscription().map(YTMRSMessage::MainMessage),
-                None => Subscription::none(),
-            },
-        ])
+        //         None
+        //     }),
+        //     match &self.state {
+        //         Some(state) => state.ytmrs.subscription().map(YTMRSMessage::MainMessage),
+        //         None => Subscription::none(),
+        //     },
+        // ])
+        Subscription::none()
     }
 
     fn handle_hotkey(key: keyboard::Key, modifiers: keyboard::Modifiers) -> Option<YTMRSMessage> {
@@ -216,7 +217,7 @@ impl Main {
                     .view(state.state.first_choice().clone())
                     .map(YTMRSMessage::MainMessage)
             ])
-            .style(|_, _| container::Appearance {
+            .style(|_| container::Style {
                 background: Some(state.state.first_choice().colors.to_background()),
                 ..Default::default()
             })

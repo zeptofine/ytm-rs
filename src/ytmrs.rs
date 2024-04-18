@@ -3,11 +3,11 @@ use std::fmt::Debug;
 use iced::{
     alignment::{Alignment, Horizontal},
     widget::{column, container, row, scrollable, text_input},
-    window::Action,
     Command as Cm, Element, Length, Subscription,
 };
+use iced_drop::droppable;
 use once_cell::sync::Lazy;
-use reqwest::Url;
+use reqwest::{Client, Url};
 use rodio::{OutputStream, OutputStreamHandle, Sink};
 use serde::Serialize;
 
@@ -20,13 +20,6 @@ use crate::{
     styling::{color_to_argb, update_scrollable, BasicYtmrsScheme, FullYtmrsScheme},
     thumbnails::ThumbnailState,
 };
-
-// use iced_aw::{color_picker, number_input};
-// use iced::{
-//     alignment::Vertical,
-//     widget::{checkbox, keyed_column, progress_bar, radio, row, slider, Column, Text},
-// };
-// use rodio::{source::Source, Decoder};
 
 static INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 
@@ -115,7 +108,7 @@ pub enum RequestResult {
 
 async fn request_info(url: String) -> RequestResult {
     println!["Requesting info for {}", url];
-    let client = reqwest::Client::new();
+    let client = Client::new();
 
     match client
         .post("http://127.0.0.1:55001/request_info")
@@ -126,6 +119,25 @@ async fn request_info(url: String) -> RequestResult {
         .send()
         .await
     {
+        Err(e) => {
+            println!["{e:?}"];
+            RequestResult::RequestError
+        }
+        Ok(r) => match r.text().await {
+            Err(_) => RequestResult::JsonParseError,
+            Ok(j) => RequestResult::Success(j),
+        },
+    }
+}
+
+async fn request_search(query: String) -> RequestResult {
+    let mut url = Url::parse("http://localhost:55001/search").unwrap();
+    url.query_pairs_mut().append_pair("q", &query);
+    println!["{}", url];
+
+    let client = Client::new();
+
+    match client.get(url).send().await {
         Err(e) => {
             println!["{e:?}"];
             RequestResult::RequestError
@@ -167,13 +179,12 @@ impl Ytmrs {
 
     pub fn view(&self, scheme: FullYtmrsScheme) -> Element<YtmrsMsg> {
         let input = self.inputs.view().map(YtmrsMsg::InputMessage);
-        let songs: Element<_> = column(self.settings.queue.iter().map(|song| {
+
+        let songs = self.settings.queue.iter().map(|song| {
             self.settings.saved_songs[song]
                 .view(&scheme.song_appearance)
-                .map(move |message| YtmrsMsg::SongMessage(song.clone(), message))
-        }))
-        .padding(0)
-        .into();
+                .map(|msg| YtmrsMsg::SongMessage(song.clone(), msg))
+        });
 
         let constructor = scrollable(
             self.settings
@@ -187,13 +198,13 @@ impl Ytmrs {
             input,
             row![
                 scrollable(
-                    container(songs)
+                    container(column(songs))
                         .width(Length::Fill)
                         .max_width(400)
                         .padding(0)
                         .align_x(Horizontal::Left)
                 )
-                .style(move |_t, s| update_scrollable(scheme.scrollable_appearance.clone().0, s)),
+                .style(move |_t, s| update_scrollable(scheme.scrollable_style.clone().0, s)),
                 constructor
             ]
         ]
@@ -212,28 +223,27 @@ impl Ytmrs {
                         // Add song to queue
                         self.settings
                             .operation_constructor
-                            .push(ConstructorItem::Song(key));
+                            .push(ConstructorItem::Song(key.clone()));
 
-                        // Cm::batch([
-                        //     // Change background color to indicate the playing song
-                        //     match song.thumbnail.clone() {
-                        //         ThumbnailState::Unknown => Cm::none(),
-                        //         ThumbnailState::Downloaded { path, handle: _ } => {
-                        //             let handle = self.settings.index.get(&key);
-                        //             match &handle.get_color() {
-                        //                 Some(col) => Cm::perform(
-                        //                     BasicYtmrsScheme::from_argb(color_to_argb(*col)),
-                        //                     |scheme| YtmrsMsg::SetNewBackground(key, scheme),
-                        //                 ),
-                        //                 None => Cm::perform(
-                        //                     BasicYtmrsScheme::from_image(path),
-                        //                     |scheme| YtmrsMsg::SetNewBackground(key, scheme),
-                        //                 ),
-                        //             }
-                        //         }
-                        //     },
-                        // ]);
-                        Cm::none()
+                        Cm::batch([
+                            // Change background color to indicate the playing song
+                            match song.thumbnail.clone() {
+                                ThumbnailState::Unknown => Cm::none(),
+                                ThumbnailState::Downloaded { path, handle: _ } => {
+                                    let handle = self.settings.index.get(&key);
+                                    match &handle.get_color() {
+                                        Some(col) => Cm::perform(
+                                            BasicYtmrsScheme::from_argb(color_to_argb(*col)),
+                                            |scheme| YtmrsMsg::SetNewBackground(key, scheme),
+                                        ),
+                                        None => Cm::perform(
+                                            BasicYtmrsScheme::from_image(path),
+                                            |scheme| YtmrsMsg::SetNewBackground(key, scheme),
+                                        ),
+                                    }
+                                }
+                            },
+                        ])
                     }
                     _ => song
                         .update(msg)
@@ -256,10 +266,13 @@ impl Ytmrs {
                         request_info(self.inputs.url.clone()),
                         YtmrsMsg::RequestRecieved,
                     ),
-
+                    // URL failed to parse, try to search Youtube
                     Err(e) => {
-                        println!["Failed to parse: {e}"];
-                        Cm::none()
+                        println!["Failed to parse: \"{}\". assuming it's a search query", e];
+                        Cm::perform(
+                            request_search(self.inputs.url.clone()),
+                            YtmrsMsg::RequestRecieved,
+                        )
                     }
                 }
             }
@@ -320,6 +333,7 @@ impl Ytmrs {
                 .operation_constructor
                 .update(msg)
                 .map(YtmrsMsg::OpConstructorMsg),
+            YtmrsMsg::Drop(pt, rec) => todo!(),
         }
     }
 

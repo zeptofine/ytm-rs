@@ -9,13 +9,13 @@ use material_colors::{color::Argb, quantize::QuantizerWsmeans, score::Score, the
 
 use crate::{
     styling::{
-        argb_to_color, ease_out_cubic, interpolate_color, pixel_to_argb, ScrollableAppearance,
+        argb_to_color, ease_out_cubic, interpolate_color, pixel_to_argb, ScrollableStyle,
         SongAppearance,
     },
     BACKGROUND_TRANSITION_DURATION, BACKGROUND_TRANSITION_RATE,
 };
 
-use super::{PickListAppearance, PickMenuAppearance};
+use super::{PickListStyle, PickMenuStyle};
 
 pub trait Interpolable {
     fn interpolate(&self, other: &Self, t: f32) -> Self;
@@ -104,6 +104,7 @@ impl BasicYtmrsScheme {
 
     pub fn into_full(self) -> FullYtmrsScheme {
         FullYtmrsScheme {
+            pick_list_style: Box::new(self.primary_color.into()),
             colors: self,
             ..Default::default()
         }
@@ -127,9 +128,9 @@ impl Interpolable for BasicYtmrsScheme {
 pub struct FullYtmrsScheme {
     pub colors: BasicYtmrsScheme,
     pub song_appearance: Box<SongAppearance>,
-    pub scrollable_appearance: Box<ScrollableAppearance>,
-    pub pick_list_appearance: Box<PickListAppearance>,
-    pub pick_menu_appearance: Box<PickMenuAppearance>,
+    pub scrollable_style: Box<ScrollableStyle>,
+    pub pick_list_style: Box<PickListStyle>,
+    pub pick_menu_style: Box<PickMenuStyle>,
 }
 
 #[derive(Debug, Clone)]
@@ -205,6 +206,7 @@ pub async fn transition_scheme(state: SchemeState) -> SchemeState {
                 let transitioned = t.from.interpolate(&t.to, actual_progress);
                 SchemeState::Transitioning(Box::new(Transitioning {
                     value: FullYtmrsScheme {
+                        pick_list_style: Box::new(transitioned.primary_color.into()),
                         colors: transitioned,
                         ..t.value
                     },

@@ -1,9 +1,10 @@
 from queue import Queue
 from threading import Thread
 from typing import TypedDict
+from urllib import parse as urlparse
 
 import orjson
-from flask import Flask, request
+from flask import Flask, request, logging
 from yt_dlp import YoutubeDL
 
 app = Flask(__name__)
@@ -59,6 +60,36 @@ def request_info():
                 f.write(orjson.dumps(info))
             return info
 
+    except Exception as e:
+        return str(e)
+
+
+def add_query(url: str, params: dict[str, str]):
+    url_parts = list(urlparse.urlparse(url))
+    query = dict(urlparse.parse_qsl(url_parts[4]))
+    query.update(params)
+    url_parts[4] = urlparse.urlencode(query)
+
+    return urlparse.urlunparse(url_parts)
+
+
+@app.route("/search")
+def search():
+    base_url = "https://music.youtube.com/search"
+    assert request.query_string
+    parsed_query = dict(urlparse.parse_qsl(request.query_string.decode("utf-8")))
+    print(parsed_query)
+    url = add_query(base_url, parsed_query)
+    print(url)
+    try:
+        with YoutubeDL(opts) as ytdl:
+            info = ytdl.extract_info(url, download=False, process=False)
+            assert info is not None
+            if "entries" in info:
+                info["entries"] = list(info["entries"])
+            with open("tmp_search.json", "wb") as f:
+                f.write(orjson.dumps(info))
+            return info
     except Exception as e:
         return str(e)
 
