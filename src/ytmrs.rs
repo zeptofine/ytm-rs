@@ -333,7 +333,6 @@ impl Ytmrs {
                 .operation_constructor
                 .update(msg)
                 .map(YtmrsMsg::OpConstructorMsg),
-            YtmrsMsg::Drop(pt, rec) => todo!(),
         }
     }
 
