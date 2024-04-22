@@ -1,17 +1,17 @@
+use std::collections::VecDeque;
+
 use iced::{
     advanced::widget::Id as WId,
     alignment::Vertical,
-    widget::{
-        button, column, container, container::Id as CId, pick_list, row, text, text_input, Column,
-        Row, Space,
-    },
-    Command as Cm, Element, Length, Renderer, Theme,
+    widget::{button, column, container, pick_list, row, text, text_input, Column, Row, Space},
+    Command as Cm, Element, Length, Renderer, Size, Theme,
 };
+use iced_drop::{droppable, zones_on_point};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     settings::{SongID, SongMap},
-    song::{ClosableSongMessage, SongId},
+    song::ClosableSongMessage,
     styling::FullYtmrsScheme,
 };
 
@@ -56,52 +56,57 @@ impl ActualRecursiveOps {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ConstructorItem {
-    Song(SongID, #[serde(skip)] SongId),
+    Song(SongID, #[serde(skip)] ItemId),
     Operation(SongOpConstructor),
 }
 
 #[derive(Debug)]
-pub enum PushErr {}
+pub enum PushErr {
+    NotFound,
+}
 
 impl ConstructorItem {
     pub fn new_song(song: SongID) -> Self {
-        Self::Song(song, SongId::default())
+        Self::Song(song, ItemId::default())
     }
 
     // TODO: These methods are ass
 
     pub fn push_to_id(&mut self, id: &WId, item: ConstructorItem) -> Result<(), PushErr> {
-        println!["{:?}", self];
-        match self {
-            ConstructorItem::Song(s, _) => todo!(),
-            ConstructorItem::Operation(op) => {
-                if WId::from(op.id.0.clone()) == *id {
-                    op.push(item)
-                } else {
-                    for (idx, child) in op.list.iter_mut().enumerate() {
-                        println!["Child: {:#?}", child];
-                        if child.item_has_id(id) {
-                            // If the child is a song, put the new song before it
-                            if let ConstructorItem::Song(_, _) = child {
-                                op.insert(idx, item);
-                            } else {
-                                child.push_to_id(id, item)?;
-                            }
+        let path = self.path_to_id(id);
+        if path.is_none() {
+            return Err(PushErr::NotFound);
+        }
+        self.push_to_path(VecDeque::from(path.unwrap()), item);
 
-                            break;
+        Ok(())
+    }
+
+    pub fn push_to_path(&mut self, mut pth: VecDeque<usize>, item: ConstructorItem) {
+        match self {
+            ConstructorItem::Song(_, _) => (),
+            ConstructorItem::Operation(op) => {
+                let next_idx = pth.pop_front();
+                match next_idx {
+                    None => {
+                        op.push(item);
+                    }
+                    Some(next_idx) => {
+                        let subitem = &mut op.list[next_idx];
+                        match subitem {
+                            ConstructorItem::Song(_, _) => op.insert(next_idx, item),
+                            ConstructorItem::Operation(_) => subitem.push_to_path(pth, item),
                         }
                     }
                 }
             }
         }
-        Ok(())
     }
 
     pub fn item_has_id(&mut self, id: &WId) -> bool {
         match self {
-            ConstructorItem::Song(ref key, sid) => {
+            ConstructorItem::Song(_key, sid) => {
                 let from = WId::from(sid.0.clone());
-                println!["Comparing {:?} and {:?}", from, id];
                 from == *id
             }
             ConstructorItem::Operation(op) => {
@@ -111,9 +116,62 @@ impl ConstructorItem {
                     op.list.iter_mut().map(|i| i.item_has_id(id)).count() > 0
                 }
             }
-            _ => false,
         }
     }
+
+    pub fn path_to_id(&self, id: &WId) -> Option<Vec<usize>> {
+        match self {
+            ConstructorItem::Song(_key, sid) => {
+                let sid = WId::from(sid.0.clone());
+                match sid == *id {
+                    true => Some(vec![]),
+                    false => None,
+                }
+            }
+            ConstructorItem::Operation(op) => {
+                let oid = WId::from(op.id.0.clone());
+                let mut v = vec![];
+                match oid == *id {
+                    true => Some(v),
+                    false => match op
+                        .list
+                        .iter()
+                        .enumerate()
+                        .find_map(|(idx, item)| item.path_to_id(id).map(|v| (idx, v)))
+                    {
+                        Some((idx, ids)) => {
+                            v.push(idx);
+                            v.extend(ids);
+                            Some(v)
+                        }
+                        None => None,
+                    },
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn test_path_to_id() {
+    let song_id = ItemId::default();
+    let song = ConstructorItem::Song("hell".to_string(), song_id.clone());
+    let song_id2 = ItemId::default();
+    let song2 = ConstructorItem::Song("hell".to_string(), song_id2.clone());
+
+    let subtree = SongOpConstructor::new(ActualRecursiveOps::PlayOnce, vec![song2]);
+    let subtree_id = subtree.id.clone();
+
+    let list = vec![song, ConstructorItem::Operation(subtree)];
+    let tree =
+        ConstructorItem::Operation(SongOpConstructor::new(ActualRecursiveOps::PlayOnce, list));
+
+    let unused_id = ItemId::default();
+
+    assert_eq![Some(vec![0]), tree.path_to_id(&WId::from(song_id.0))];
+    assert_eq![Some(vec![1]), tree.path_to_id(&WId::from(subtree_id.0))];
+    assert_eq![Some(vec![1, 0]), tree.path_to_id(&WId::from(song_id2.0))];
+    assert_eq![None, tree.path_to_id(&WId::from(unused_id.0))];
 }
 
 #[derive(Debug, Clone)]
@@ -129,6 +187,8 @@ pub enum SongOpMessage {
     Add(ConstructorItem),
     Remove(usize),
     NewGroup,
+    Dropped(usize, iced::Point, iced::Rectangle),
+    HandleZones(usize, Vec<(iced::advanced::widget::Id, iced::Rectangle)>),
 
     ItemMessage(usize, CItemMessage),
     Generate,
@@ -139,6 +199,12 @@ pub enum SongOpMessage {
     ChangeN(u32),
 
     Null,
+}
+
+pub enum UpdateResult {
+    Cm(Cm<SongOpMessage>),
+    Move(Vec<usize>, Vec<usize>), // from, to
+    None,
 }
 
 // #[derive(Debug, Clone, Default)]
@@ -167,8 +233,8 @@ const CONSTRUCTOR_CHOICES: [&str; 7] = [
 ];
 
 #[derive(Debug, Clone)]
-pub struct SongOpId(pub container::Id);
-impl Default for SongOpId {
+pub struct ItemId(pub container::Id);
+impl Default for ItemId {
     fn default() -> Self {
         Self(container::Id::unique())
     }
@@ -177,7 +243,7 @@ impl Default for SongOpId {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SongOpConstructor {
     #[serde(skip)]
-    id: SongOpId,
+    id: ItemId,
     operation: ActualRecursiveOps,
     list: Vec<ConstructorItem>,
     collapsible: bool,
@@ -198,14 +264,23 @@ impl Default for SongOpConstructor {
     }
 }
 impl SongOpConstructor {
+    pub fn new(operation: ActualRecursiveOps, list: Vec<ConstructorItem>) -> Self {
+        Self {
+            id: ItemId::default(),
+            operation,
+            list,
+            collapsible: true,
+            collapsed: false,
+            n: 1,
+        }
+    }
+
     fn header(
         &self,
         scheme: &FullYtmrsScheme,
         closable: bool,
     ) -> Row<'_, SongOpMessage, Theme, Renderer> {
-        let scrollable_style = scheme.scrollable_style.clone();
         let pick_style = scheme.pick_list_style.clone();
-        let pick_menu_style = scheme.pick_menu_style.clone();
         let child: Element<SongOpMessage> = match self.collapsed {
             // show the operation controls
             false => row![pick_list(
@@ -266,9 +341,25 @@ impl SongOpConstructor {
         scheme: &FullYtmrsScheme,
     ) -> Row<'_, SongOpMessage, Theme, Renderer> {
         let items = self.list.iter().enumerate().map(|(idx, item)| match item {
-            ConstructorItem::Song(key, sid) => song_map[key]
-                .view_closable(sid.0.clone(), &scheme.song_appearance)
-                .map(move |msg| SongOpMessage::ItemMessage(idx, CItemMessage::Song(msg))),
+            ConstructorItem::Song(key, sid) => {
+                let song = &song_map[key];
+                let img: Element<SongOpMessage> = song.get_img(75, 75);
+
+                container(
+                    row![
+                        button(img).padding(0),
+                        droppable(song.get_data())
+                            .drag_mode(false, true)
+                            .drag_hide(true)
+                            .on_drop(move |pt, rec| SongOpMessage::Dropped(idx, pt, rec)),
+                        text(format!("{:?}", sid.0)),
+                        button("x").on_press(SongOpMessage::Remove(idx))
+                    ]
+                    .align_items(iced::Alignment::Center),
+                )
+                .id(sid.0.clone())
+                .into()
+            }
             ConstructorItem::Operation(constructor) => {
                 constructor.view_nested(song_map, scheme).map(move |msg| {
                     SongOpMessage::ItemMessage(idx, CItemMessage::Operation(Box::new(msg)))
@@ -277,7 +368,7 @@ impl SongOpConstructor {
         });
 
         row![
-            Space::with_width(Length::Fixed(2.0)),
+            Space::with_width(Length::Fixed(3.0)),
             Column::with_children(items)
         ]
         .width(Length::Fill)
@@ -325,27 +416,26 @@ impl SongOpConstructor {
         self.list.insert(idx, item)
     }
 
-    pub fn update(&mut self, msg: SongOpMessage) -> Cm<SongOpMessage> {
+    pub fn update(&mut self, msg: SongOpMessage) -> UpdateResult {
         match msg {
-            SongOpMessage::CloseSelf => Cm::none(),
+            SongOpMessage::CloseSelf => UpdateResult::Cm(Cm::none()),
             SongOpMessage::Add(item) => {
                 self.list.push(item);
-                Cm::none()
+                UpdateResult::None
             }
             SongOpMessage::Remove(idx) => {
                 self.list.remove(idx);
-                Cm::none()
+                UpdateResult::None
             }
             SongOpMessage::ItemMessage(idx, msg) => {
                 let item = &mut self.list[idx];
                 match item {
-                    ConstructorItem::Song(key, sid) => match msg {
+                    ConstructorItem::Song(_key, _sid) => match msg {
                         CItemMessage::Song(msg) => match msg {
                             ClosableSongMessage::Closed => {
                                 self.list.remove(idx);
-                                Cm::none()
+                                UpdateResult::None
                             }
-                            ClosableSongMessage::Clicked => todo!(),
                         },
                         CItemMessage::Operation(_) => todo!(), // Uh oh!!! This should be impossible!!!
                     },
@@ -354,14 +444,18 @@ impl SongOpConstructor {
                         CItemMessage::Operation(somsg) => match *somsg {
                             SongOpMessage::CloseSelf => {
                                 self.list.remove(idx);
-                                Cm::none()
+                                UpdateResult::None
                             }
-                            _ => op.update(*somsg).map(move |msg| {
-                                SongOpMessage::ItemMessage(
-                                    idx,
-                                    CItemMessage::Operation(Box::new(msg)),
-                                )
-                            }),
+                            _ => match op.update(*somsg) {
+                                UpdateResult::Cm(cm) => UpdateResult::Cm(cm.map(move |msg| {
+                                    SongOpMessage::ItemMessage(
+                                        idx,
+                                        CItemMessage::Operation(Box::new(msg)),
+                                    )
+                                })),
+                                UpdateResult::Move(from, to) => UpdateResult::Move(from, to),
+                                UpdateResult::None => UpdateResult::None,
+                            },
                         },
                     },
                 }
@@ -371,33 +465,43 @@ impl SongOpConstructor {
                     .push(ConstructorItem::Operation(SongOpConstructor::default()));
                 println!["Group added"];
                 println!["{:#?}", self.list];
-                Cm::none()
+                UpdateResult::None
             }
             SongOpMessage::ChangeOperation(op) => {
                 self.operation = op;
-                Cm::none()
+                UpdateResult::None
+            }
+            SongOpMessage::Dropped(idx, point, _rec) => UpdateResult::Cm(zones_on_point(
+                move |zones| SongOpMessage::HandleZones(idx, zones),
+                point,
+                None,
+                None,
+            )),
+            SongOpMessage::HandleZones(_idx, zones) => {
+                println!["{:#?}", zones];
+                UpdateResult::None
             }
             SongOpMessage::Collapse => {
                 self.collapsed = true;
-                Cm::none()
+                UpdateResult::None
             }
             SongOpMessage::Uncollapse => {
                 self.collapsed = false;
-                Cm::none()
+                UpdateResult::None
             }
             SongOpMessage::ChangeN(n) => {
                 self.n = n;
-                Cm::none()
+                UpdateResult::None
             }
 
             SongOpMessage::Generate => {
                 let ops = self.build();
                 println!["{:#?}", ops];
-                Cm::none()
+                UpdateResult::None
             }
 
             // Pointer for things like inputting a non-integer value into the "N" field.
-            SongOpMessage::Null => Cm::none(),
+            SongOpMessage::Null => UpdateResult::None,
         }
     }
 

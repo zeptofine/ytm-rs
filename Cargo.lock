@@ -2118,7 +2118,7 @@ dependencies = [
 [[package]]
 name = "iced_drop"
 version = "0.1.0"
-source = "git+https://github.com/zeptofine/iced_drop#32a9dd6265c5038035f25a2529f57d69bb71a819"
+source = "git+https://github.com/zeptofine/iced_drop?branch=with_drag#40fecef9d6d04116c188728a86e599e738a4cb77"
 dependencies = [
  "iced",
 ]
@@ -4591,7 +4591,7 @@ dependencies = [
  "serde",
  "serde_spanned",
  "toml_datetime",
- "toml_edit 0.22.9",
+ "toml_edit 0.22.11",
 ]
 
 [[package]]
@@ -4616,9 +4616,9 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.22.9"
+version = "0.22.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e40bb779c5187258fd7aad0eb68cb8706a0a81fa712fbea808ab43c4b8374c4"
+checksum = "fb686a972ccef8537b39eead3968b0e8616cb5040dbb9bba93007c8e07c9215f"
 dependencies = [
  "indexmap",
  "serde",

@@ -41,7 +41,7 @@ struct Main {
     state: Option<MainState>,
 }
 
-// The largest enum variant by far is MainMessage,
+// The largest enum variant is MainMessage,
 // but it is by far the most common, so it does not warrant
 // a Box.
 #[allow(clippy::large_enum_variant)]

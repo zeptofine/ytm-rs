@@ -1,4 +1,4 @@
-use std::{fmt::Debug, pin::pin};
+use std::{collections::VecDeque, fmt::Debug};
 
 use iced::{
     alignment::{Alignment, Horizontal},
@@ -16,7 +16,7 @@ use crate::{
     response_types::{YTResponseError, YTResponseType, YTSong},
     settings::YTMRSettings,
     song::{Song, SongMessage},
-    song_operations::{ConstructorItem, SongOpMessage},
+    song_operations::{ConstructorItem, SongOpMessage, UpdateResult},
     styling::{color_to_argb, BasicYtmrsScheme, FullYtmrsScheme},
     thumbnails::ThumbnailState,
 };
@@ -36,7 +36,7 @@ pub enum InputMessage {
 
 impl UserInputs {
     fn view(&self) -> Element<InputMessage> {
-        column![text_input("Youtube URL...", &self.url)
+        column![text_input("", &self.url)
             .id(INPUT_ID.clone())
             .on_input(InputMessage::UrlChanged)
             .on_submit(InputMessage::UrlSubmitted)
@@ -197,6 +197,7 @@ impl Ytmrs {
                 .view(&self.settings.saved_songs, &scheme)
                 .map(YtmrsMsg::OpConstructorMsg),
         )
+        .style(scheme.scrollable_style.clone().update())
         .height(Length::Fill)
         .width(Length::Fill);
 
@@ -329,12 +330,13 @@ impl Ytmrs {
                 println!["{:?}", e];
                 Cm::none()
             }
-            YtmrsMsg::OpConstructorMsg(msg) => self
-                .settings
-                .operation_constructor
-                .update(msg)
-                .map(YtmrsMsg::OpConstructorMsg),
-
+            YtmrsMsg::OpConstructorMsg(msg) => {
+                match self.settings.operation_constructor.update(msg) {
+                    UpdateResult::Cm(cm) => cm.map(YtmrsMsg::OpConstructorMsg),
+                    UpdateResult::Move(_from, _to) => todo!(),
+                    UpdateResult::None => Cm::none(),
+                }
+            }
             YtmrsMsg::Drop(key, point, _rec) => zones_on_point(
                 move |zones| YtmrsMsg::HandleZones(key.clone(), zones),
                 point,
@@ -346,9 +348,14 @@ impl Ytmrs {
                     ConstructorItem::Operation(self.settings.operation_constructor.clone());
                 let mut zones = zones;
                 zones.reverse();
+                println!["{:?}", zones];
                 if let Some((id, _r)) = zones.iter().find(|(id, _r)| top.item_has_id(id)) {
-                    let result = top.push_to_id(id, ConstructorItem::new_song(key));
-                    println!["{:?}", result];
+                    println!["Target: {:#?}", id];
+                    let path = top.path_to_id(id).unwrap();
+                    println!["{:?}", path];
+                    let item = ConstructorItem::new_song(key);
+                    top.push_to_path(VecDeque::from(path), item);
+                    // println!["{:?}", result];
 
                     // This should always be an operation
                     if let ConstructorItem::Operation(op) = top {

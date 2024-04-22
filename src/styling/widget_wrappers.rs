@@ -1,7 +1,7 @@
 use iced::{
     overlay::menu,
     widget::{
-        button, container, pick_list,
+        container, pick_list,
         scrollable::{self, Scrollbar, Scroller},
     },
     Background, Border, Color, Theme,

@@ -1,6 +1,6 @@
 use iced::{
     alignment::Vertical,
-    widget::{button, column, container, container::Id as CId, row, text, Image, Row},
+    widget::{button, column, container, container::Id as CId, row, text, Column, Image, Row},
     Alignment, Command as Cm, Element, Length,
 };
 
@@ -20,14 +20,6 @@ use crate::{
 //     Alignment,
 // };
 // use crate::response_types::UrlString;
-
-#[derive(Debug, Clone)]
-pub struct SongId(pub container::Id);
-impl Default for SongId {
-    fn default() -> Self {
-        Self(container::Id::unique())
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Song {
@@ -57,7 +49,8 @@ impl Song {
             _ => Cm::none(),
         }])
     }
-    fn get_img<Msg>(&self, height: u16, width: u16) -> Element<Msg> {
+
+    pub fn get_img<Msg>(&self, height: u16, width: u16) -> Element<Msg> {
         match &self.thumbnail {
             ThumbnailState::Downloaded { path: _, handle } => Image::new(handle.clone())
                 .height(height)
@@ -89,22 +82,23 @@ impl Song {
         }
     }
 
+    pub fn get_data<'a, M: 'a>(&'a self) -> Column<'a, M, iced::Theme, iced::Renderer> {
+        column![
+            text(&self.data.title),
+            text(self.format_duration()),
+            text(self.format_artists()),
+        ]
+        .spacing(1)
+        .padding(5)
+        .width(Length::Fill)
+    }
+
     fn img_and_data<'a, M: 'a>(
         &'a self,
         width: u16,
         height: u16,
     ) -> Row<'a, M, iced::Theme, iced::Renderer> {
-        row![
-            self.get_img(height, width),
-            column![
-                text(&self.data.title),
-                text(self.format_duration()),
-                text(self.format_artists())
-            ]
-            .spacing(1)
-            .padding(5)
-            .width(Length::Fill),
-        ]
+        row![self.get_img(height, width), self.get_data(),]
     }
 
     pub fn view(&self, appearance: &SongStyle) -> Element<SongMessage> {
@@ -150,5 +144,4 @@ pub enum SongMessage {
 #[derive(Debug, Clone)]
 pub enum ClosableSongMessage {
     Closed,
-    Clicked,
 }
