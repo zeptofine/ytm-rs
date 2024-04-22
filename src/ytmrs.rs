@@ -362,7 +362,7 @@ impl Ytmrs {
                     return Cm::none();
                 }
 
-                let mut top = self.settings.operation_constructor.clone();
+                let top = &mut self.settings.operation_constructor;
                 println!["{:?}", zones];
 
                 if let Some((id, _)) = zones.iter().rev().find(|(id, _r)| top.item_has_id(id)) {

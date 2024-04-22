@@ -508,7 +508,7 @@ impl TreeDirected for SongOpConstructor {
         let next_idx = pth.pop_front();
         match next_idx {
             None => {
-                self.push(item);
+                self.list.push(item);
             }
             Some(next_idx) => {
                 let subitem = &mut self.list[next_idx];
