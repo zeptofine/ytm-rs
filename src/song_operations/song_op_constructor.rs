@@ -337,7 +337,7 @@ impl SongOpConstructor {
         });
 
         row![
-            Space::with_width(Length::Fixed(3.0)),
+            Space::with_width(Length::Fixed(5.0)),
             Column::with_children(items)
         ]
         .width(Length::Fill)
@@ -511,7 +511,8 @@ impl TreeDirected for SongOpConstructor {
                 self.list.push(item);
             }
             Some(next_idx) => {
-                let subitem = &mut self.list[next_idx];
+                let list_len = self.list.len();
+                let subitem = &mut self.list[next_idx.min(list_len - 1)];
                 match subitem {
                     ConstructorItem::Song(_, _) => self.insert(next_idx, item),
                     ConstructorItem::Operation(_) => subitem.push_to_path(pth, item),

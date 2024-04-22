@@ -342,9 +342,27 @@ impl Ytmrs {
                 match self.settings.operation_constructor.update(msg) {
                     UpdateResult::Cm(cm) => cm.map(YtmrsMsg::OpConstructorMsg),
                     UpdateResult::Move(from, to) => {
-                        println!["From: {:?}\nTo: {:?}", from, to];
-
                         // Remove item at `from` and place it to `to`
+                        let from_path = self.settings.operation_constructor.path_to_id(&from);
+                        let to_path = self.settings.operation_constructor.path_to_id(&to);
+                        if from_path.is_none() || to_path.is_none() {
+                            return Cm::none();
+                        }
+                        let from_path = from_path.unwrap();
+                        let to_path = to_path.unwrap();
+
+                        let item = self
+                            .settings
+                            .operation_constructor
+                            .pop_path(from_path.into());
+                        if item.is_none() {
+                            return Cm::none();
+                        }
+                        let item = item.unwrap();
+
+                        self.settings
+                            .operation_constructor
+                            .push_to_path(to_path.into(), item);
 
                         Cm::none()
                     }
