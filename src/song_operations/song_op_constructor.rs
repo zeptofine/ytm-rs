@@ -4,7 +4,7 @@ use iced::{
     advanced::widget::Id as WId,
     alignment::Vertical,
     widget::{button, column, container, pick_list, row, text, text_input, Column, Row, Space},
-    Command as Cm, Element, Length, Renderer, Size, Theme,
+    Command as Cm, Element, Length, Renderer, Theme,
 };
 use iced_drop::{droppable, zones_on_point};
 use serde::{Deserialize, Serialize};
@@ -54,72 +54,57 @@ impl ActualRecursiveOps {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ConstructorItem {
-    Song(SongID, #[serde(skip)] ItemId),
-    Operation(SongOpConstructor),
-}
-
 #[derive(Debug)]
 pub enum PushErr {
     NotFound,
 }
 
-impl ConstructorItem {
-    pub fn new_song(song: SongID) -> Self {
-        Self::Song(song, ItemId::default())
+pub trait TreeDirected {
+    // TODO: These methods are not as ass but they could be better probably
+
+    fn push_to_path(&mut self, pth: VecDeque<usize>, item: ConstructorItem);
+
+    fn pop_path(&mut self, pth: VecDeque<usize>) -> Option<ConstructorItem>;
+
+    fn item_has_id(&mut self, id: &WId) -> bool {
+        self.path_to_id(id).is_some()
     }
 
-    // TODO: These methods are ass
+    fn path_to_id(&self, id: &WId) -> Option<Vec<usize>>;
+}
 
-    pub fn push_to_id(&mut self, id: &WId, item: ConstructorItem) -> Result<(), PushErr> {
-        let path = self.path_to_id(id);
-        if path.is_none() {
-            return Err(PushErr::NotFound);
-        }
-        self.push_to_path(VecDeque::from(path.unwrap()), item);
-
-        Ok(())
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ConstructorItem {
+    Song(SongID, #[serde(skip)] ItemId),
+    Operation(SongOpConstructor),
+}
+impl From<SongID> for ConstructorItem {
+    fn from(value: SongID) -> Self {
+        Self::Song(value, ItemId::default())
     }
+}
+impl From<SongOpConstructor> for ConstructorItem {
+    fn from(value: SongOpConstructor) -> Self {
+        Self::Operation(value)
+    }
+}
 
-    pub fn push_to_path(&mut self, mut pth: VecDeque<usize>, item: ConstructorItem) {
+impl TreeDirected for ConstructorItem {
+    fn push_to_path(&mut self, pth: VecDeque<usize>, item: ConstructorItem) {
         match self {
             ConstructorItem::Song(_, _) => (),
-            ConstructorItem::Operation(op) => {
-                let next_idx = pth.pop_front();
-                match next_idx {
-                    None => {
-                        op.push(item);
-                    }
-                    Some(next_idx) => {
-                        let subitem = &mut op.list[next_idx];
-                        match subitem {
-                            ConstructorItem::Song(_, _) => op.insert(next_idx, item),
-                            ConstructorItem::Operation(_) => subitem.push_to_path(pth, item),
-                        }
-                    }
-                }
-            }
+            ConstructorItem::Operation(op) => op.push_to_path(pth, item),
         }
     }
 
-    pub fn item_has_id(&mut self, id: &WId) -> bool {
+    fn pop_path(&mut self, pth: VecDeque<usize>) -> Option<ConstructorItem> {
         match self {
-            ConstructorItem::Song(_key, sid) => {
-                let from = WId::from(sid.0.clone());
-                from == *id
-            }
-            ConstructorItem::Operation(op) => {
-                if WId::from(op.id.0.clone()) == *id {
-                    true
-                } else {
-                    op.list.iter_mut().any(|i| i.item_has_id(id))
-                }
-            }
+            ConstructorItem::Song(_, _) => None,
+            ConstructorItem::Operation(op) => op.pop_path(pth),
         }
     }
 
-    pub fn path_to_id(&self, id: &WId) -> Option<Vec<usize>> {
+    fn path_to_id(&self, id: &WId) -> Option<Vec<usize>> {
         match self {
             ConstructorItem::Song(_key, sid) => {
                 let sid = WId::from(sid.0.clone());
@@ -128,26 +113,7 @@ impl ConstructorItem {
                     false => None,
                 }
             }
-            ConstructorItem::Operation(op) => {
-                let oid = WId::from(op.id.0.clone());
-                let mut v = vec![];
-                match oid == *id {
-                    true => Some(v),
-                    false => match op
-                        .list
-                        .iter()
-                        .enumerate()
-                        .find_map(|(idx, item)| item.path_to_id(id).map(|v| (idx, v)))
-                    {
-                        Some((idx, ids)) => {
-                            v.push(idx);
-                            v.extend(ids);
-                            Some(v)
-                        }
-                        None => None,
-                    },
-                }
-            }
+            ConstructorItem::Operation(op) => op.path_to_id(id),
         }
     }
 }
@@ -159,12 +125,11 @@ fn test_path_to_id() {
     let song_id2 = ItemId::default();
     let song2 = ConstructorItem::Song("hell".to_string(), song_id2.clone());
 
-    let subtree = SongOpConstructor::new(ActualRecursiveOps::PlayOnce, vec![song2]);
+    let subtree = SongOpConstructor::from(vec![song2]);
     let subtree_id = subtree.id.clone();
 
     let list = vec![song, ConstructorItem::Operation(subtree)];
-    let tree =
-        ConstructorItem::Operation(SongOpConstructor::new(ActualRecursiveOps::PlayOnce, list));
+    let tree = SongOpConstructor::from(list);
 
     let unused_id = ItemId::default();
 
@@ -187,8 +152,8 @@ pub enum SongOpMessage {
     Add(ConstructorItem),
     Remove(usize),
     NewGroup,
-    Dropped(usize, iced::Point, iced::Rectangle),
-    HandleZones(usize, Vec<(iced::advanced::widget::Id, iced::Rectangle)>),
+    Dropped(WId, iced::Point, iced::Rectangle),
+    HandleZones(WId, Vec<(iced::advanced::widget::Id, iced::Rectangle)>),
 
     ItemMessage(usize, CItemMessage),
     Generate,
@@ -203,7 +168,7 @@ pub enum SongOpMessage {
 
 pub enum UpdateResult {
     Cm(Cm<SongOpMessage>),
-    Move(Vec<usize>, Vec<usize>), // from, to
+    Move(WId, WId), // from, to
     None,
 }
 
@@ -351,7 +316,11 @@ impl SongOpConstructor {
                         droppable(song.get_data())
                             .drag_mode(false, true)
                             .drag_hide(true)
-                            .on_drop(move |pt, rec| SongOpMessage::Dropped(idx, pt, rec)),
+                            .on_drop(move |pt, rec| SongOpMessage::Dropped(
+                                WId::from(sid.0.clone()),
+                                pt,
+                                rec
+                            )),
                         text(format!("{:?}", sid.0)),
                         button("x").on_press(SongOpMessage::Remove(idx))
                     ]
@@ -471,15 +440,18 @@ impl SongOpConstructor {
                 self.operation = op;
                 UpdateResult::None
             }
-            SongOpMessage::Dropped(idx, point, _rec) => UpdateResult::Cm(zones_on_point(
-                move |zones| SongOpMessage::HandleZones(idx, zones),
+            SongOpMessage::Dropped(original_id, point, _rec) => UpdateResult::Cm(zones_on_point(
+                move |zones| SongOpMessage::HandleZones(original_id.clone(), zones),
                 point,
                 None,
                 None,
             )),
-            SongOpMessage::HandleZones(_idx, zones) => {
-                println!["{:#?}", zones];
-                UpdateResult::None
+            SongOpMessage::HandleZones(original_id, zones) => {
+                // TODO: This assumes the last zone was the desired target
+                match zones.last() {
+                    Some((target_id, _rec)) => UpdateResult::Move(original_id, target_id.clone()),
+                    None => UpdateResult::None,
+                }
             }
             SongOpMessage::Collapse => {
                 self.collapsed = true;
@@ -523,6 +495,64 @@ impl SongOpConstructor {
             ActualRecursiveOps::RandomPlay => RecursiveSongOp::RandomPlay(children),
             ActualRecursiveOps::SingleRandom => RecursiveSongOp::SingleRandom(children),
             ActualRecursiveOps::InfiniteRandom => RecursiveSongOp::InfiniteRandom(children),
+        }
+    }
+}
+impl From<Vec<ConstructorItem>> for SongOpConstructor {
+    fn from(value: Vec<ConstructorItem>) -> Self {
+        Self::new(ActualRecursiveOps::PlayOnce, value)
+    }
+}
+impl TreeDirected for SongOpConstructor {
+    fn push_to_path(&mut self, mut pth: VecDeque<usize>, item: ConstructorItem) {
+        let next_idx = pth.pop_front();
+        match next_idx {
+            None => {
+                self.push(item);
+            }
+            Some(next_idx) => {
+                let subitem = &mut self.list[next_idx];
+                match subitem {
+                    ConstructorItem::Song(_, _) => self.insert(next_idx, item),
+                    ConstructorItem::Operation(_) => subitem.push_to_path(pth, item),
+                }
+            }
+        }
+    }
+
+    fn pop_path(&mut self, mut pth: VecDeque<usize>) -> Option<ConstructorItem> {
+        let next_idx = pth.pop_front()?;
+        let subitem = &mut self.list[next_idx];
+        match subitem {
+            ConstructorItem::Song(_, _) => Some(self.list.remove(next_idx)),
+            ConstructorItem::Operation(op) => {
+                if pth.is_empty() {
+                    Some(op.list.remove(next_idx))
+                } else {
+                    subitem.pop_path(pth)
+                }
+            }
+        }
+    }
+
+    fn path_to_id(&self, id: &WId) -> Option<Vec<usize>> {
+        let oid = WId::from(self.id.0.clone());
+        let mut v = vec![];
+        match oid == *id {
+            true => Some(v),
+            false => match self
+                .list
+                .iter()
+                .enumerate()
+                .find_map(|(idx, item)| item.path_to_id(id).map(|v| (idx, v)))
+            {
+                Some((idx, ids)) => {
+                    v.push(idx);
+                    v.extend(ids);
+                    Some(v)
+                }
+                None => None,
+            },
         }
     }
 }

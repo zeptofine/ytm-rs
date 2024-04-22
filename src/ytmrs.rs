@@ -17,7 +17,7 @@ use crate::{
     response_types::{YTResponseError, YTResponseType, YTSong},
     settings::YTMRSettings,
     song::{Song, SongMessage},
-    song_operations::{ConstructorItem, SongOpMessage, UpdateResult},
+    song_operations::{ConstructorItem, SongOpMessage, TreeDirected, UpdateResult},
     styling::{color_to_argb, BasicYtmrsScheme, FullYtmrsScheme},
     thumbnails::ThumbnailState,
 };
@@ -239,7 +239,7 @@ impl Ytmrs {
                 // Add song to queue
                 self.settings
                     .operation_constructor
-                    .push(ConstructorItem::new_song(key.clone()));
+                    .push(ConstructorItem::from(key.clone()));
 
                 Cm::batch([
                     // Change background color to indicate the playing song
@@ -341,7 +341,13 @@ impl Ytmrs {
             YtmrsMsg::OpConstructorMsg(msg) => {
                 match self.settings.operation_constructor.update(msg) {
                     UpdateResult::Cm(cm) => cm.map(YtmrsMsg::OpConstructorMsg),
-                    UpdateResult::Move(_from, _to) => todo!(),
+                    UpdateResult::Move(from, to) => {
+                        println!["From: {:?}\nTo: {:?}", from, to];
+
+                        // Remove item at `from` and place it to `to`
+
+                        Cm::none()
+                    }
                     UpdateResult::None => Cm::none(),
                 }
             }
@@ -351,34 +357,27 @@ impl Ytmrs {
                 None,
                 None,
             ),
-            YtmrsMsg::HandleZones(key, zones) => {
+            YtmrsMsg::HandleZones(song_key, zones) => {
                 if zones.is_empty() {
                     return Cm::none();
                 }
 
-                let mut top =
-                    ConstructorItem::Operation(self.settings.operation_constructor.clone());
-                let mut zones = zones;
-                zones.reverse();
+                let mut top = self.settings.operation_constructor.clone();
                 println!["{:?}", zones];
 
-                if let Some((id, _)) = zones.iter().find(|(id, _r)| top.item_has_id(id)) {
+                if let Some((id, _)) = zones.iter().rev().find(|(id, _r)| top.item_has_id(id)) {
                     println!["Target: {:#?}", id];
 
                     let path = top.path_to_id(id).unwrap();
                     println!["{:?}", path];
-                    let item = ConstructorItem::new_song(key);
+                    let item: ConstructorItem = song_key.into();
                     top.push_to_path(VecDeque::from(path), item);
-                } else if let Some((id, _)) = zones.first() {
+                } else if let Some((id, _)) = zones.last() {
                     if *id == WId::new("base_drop_target") {
-                        top.push_to_path(VecDeque::new(), ConstructorItem::new_song(key))
+                        top.push_to_path(VecDeque::new(), song_key.into())
                     }
                 }
 
-                // This should always be an operation
-                if let ConstructorItem::Operation(op) = top {
-                    self.settings.operation_constructor = op;
-                }
                 Cm::none()
             }
         }
