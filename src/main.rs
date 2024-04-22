@@ -1,5 +1,5 @@
 // #![windows_subsystem = "windows"]
-#![allow(dead_code)]
+// #![allow(dead_code)]
 
 use std::fmt::Debug;
 use std::path::PathBuf;

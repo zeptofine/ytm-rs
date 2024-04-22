@@ -109,23 +109,6 @@ impl Song {
             .into()
     }
 
-    pub fn view_closable(&self, id: CId, appearance: &SongStyle) -> Element<ClosableSongMessage> {
-        let song_style = appearance.0;
-        let img_and_data = self.img_and_data(75, 75);
-        container(
-            row![
-                img_and_data,
-                button("x").on_press(ClosableSongMessage::Closed)
-            ]
-            .align_items(Alignment::Center)
-            .padding(0)
-            .spacing(0),
-        )
-        .style(move |_| song_style)
-        .id(id)
-        .into()
-    }
-
     pub fn update(&mut self, msg: SongMessage) -> Cm<SongMessage> {
         if let SongMessage::ThumbnailGathered(state) = msg {
             self.thumbnail = state;

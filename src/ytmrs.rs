@@ -341,7 +341,7 @@ impl Ytmrs {
             YtmrsMsg::OpConstructorMsg(msg) => {
                 match self.settings.operation_constructor.update(msg) {
                     UpdateResult::Cm(cm) => cm.map(YtmrsMsg::OpConstructorMsg),
-                    UpdateResult::SongClicked(WId) => todo!(),
+                    UpdateResult::SongClicked(wid) => todo!(),
                     UpdateResult::Move(from, to) => {
                         // Remove item at `from` and place it to `to`
                         let from_path = self.settings.operation_constructor.path_to_id(&from);
