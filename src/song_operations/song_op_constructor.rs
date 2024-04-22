@@ -10,7 +10,7 @@ use iced_drop::{droppable, zones_on_point};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    settings::{SongID, SongMap},
+    settings::{SongKey, SongMap},
     song::ClosableSongMessage,
     styling::FullYtmrsScheme,
 };
@@ -75,11 +75,11 @@ pub trait TreeDirected {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ConstructorItem {
-    Song(SongID, #[serde(skip)] ItemId),
+    Song(SongKey, #[serde(skip)] ItemId),
     Operation(SongOpConstructor),
 }
-impl From<SongID> for ConstructorItem {
-    fn from(value: SongID) -> Self {
+impl From<SongKey> for ConstructorItem {
+    fn from(value: SongKey) -> Self {
         Self::Song(value, ItemId::default())
     }
 }
@@ -152,6 +152,7 @@ pub enum SongOpMessage {
     Add(ConstructorItem),
     Remove(usize),
     NewGroup,
+
     Dropped(WId, iced::Point, iced::Rectangle),
     HandleZones(WId, Vec<(iced::advanced::widget::Id, iced::Rectangle)>),
 
@@ -168,6 +169,7 @@ pub enum SongOpMessage {
 
 pub enum UpdateResult {
     Cm(Cm<SongOpMessage>),
+    SongClicked(WId),
     Move(WId, WId), // from, to
     None,
 }
@@ -337,7 +339,7 @@ impl SongOpConstructor {
         });
 
         row![
-            Space::with_width(Length::Fixed(5.0)),
+            Space::with_width(Length::Fixed(8.0)),
             Column::with_children(items)
         ]
         .width(Length::Fill)
@@ -422,6 +424,7 @@ impl SongOpConstructor {
                                         CItemMessage::Operation(Box::new(msg)),
                                     )
                                 })),
+                                UpdateResult::SongClicked(id) => UpdateResult::SongClicked(id),
                                 UpdateResult::Move(from, to) => UpdateResult::Move(from, to),
                                 UpdateResult::None => UpdateResult::None,
                             },
@@ -449,7 +452,10 @@ impl SongOpConstructor {
             SongOpMessage::HandleZones(original_id, zones) => {
                 // TODO: This assumes the last zone was the desired target
                 match zones.last() {
-                    Some((target_id, _rec)) => UpdateResult::Move(original_id, target_id.clone()),
+                    Some((target_id, _rec)) => match original_id == *target_id {
+                        true => UpdateResult::SongClicked(original_id),
+                        false => UpdateResult::Move(original_id, target_id.clone()),
+                    },
                     None => UpdateResult::None,
                 }
             }

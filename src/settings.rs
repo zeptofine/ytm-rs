@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{cache_handlers::CacheHandler, song::Song, song_operations::SongOpConstructor};
 
-pub type SongID = String;
+pub type SongKey = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTMRUserSettings {
@@ -18,13 +18,13 @@ impl Default for YTMRUserSettings {
     }
 }
 
-pub type SongMap = HashMap<SongID, Song>;
+pub type SongMap = HashMap<SongKey, Song>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTMRSettings {
     pub saved_songs: SongMap,
     pub index: CacheHandler,
-    pub queue: Vec<SongID>,
+    pub queue: Vec<SongKey>,
     pub operation_constructor: SongOpConstructor,
     pub user_settings: YTMRUserSettings,
 }
