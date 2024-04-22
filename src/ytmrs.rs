@@ -1,8 +1,9 @@
 use std::{collections::VecDeque, fmt::Debug};
 
 use iced::{
+    advanced::widget::Id as WId,
     alignment::{Alignment, Horizontal},
-    widget::{column, container, row, scrollable, text_input},
+    widget::{column, container::Id as CId, row, scrollable, text_input, Container, Space},
     Command as Cm, Element, Length,
 };
 use iced_drop::{droppable, zones_on_point};
@@ -198,11 +199,15 @@ impl Ytmrs {
                 .map(YtmrsMsg::OpConstructorMsg),
         )
         .style(scheme.scrollable_style.clone().update())
-        .height(Length::Fill)
         .width(Length::Fill);
 
+        let base_drop_target = Container::new(Space::with_height(Length::Fill))
+            .height(Length::Shrink)
+            .width(Length::Fill)
+            .id(CId::new("base_drop_target"));
+
         let song_list = scrollable(
-            container(column(songs))
+            Container::new(column(songs))
                 .width(Length::Fill)
                 .max_width(400)
                 .padding(0)
@@ -210,11 +215,14 @@ impl Ytmrs {
         )
         .style(scheme.scrollable_style.update());
 
-        column![input, row![song_list, constructor]]
-            .align_items(Alignment::Center)
-            .spacing(20)
-            .padding(10)
-            .into()
+        column![
+            input,
+            row![song_list, column![constructor, base_drop_target]]
+        ]
+        .align_items(Alignment::Center)
+        .spacing(20)
+        .padding(10)
+        .into()
     }
 
     pub fn update(&mut self, message: YtmrsMsg) -> Cm<YtmrsMsg> {
@@ -344,25 +352,33 @@ impl Ytmrs {
                 None,
             ),
             YtmrsMsg::HandleZones(key, zones) => {
+                if zones.is_empty() {
+                    return Cm::none();
+                }
+
                 let mut top =
                     ConstructorItem::Operation(self.settings.operation_constructor.clone());
                 let mut zones = zones;
                 zones.reverse();
                 println!["{:?}", zones];
-                if let Some((id, _r)) = zones.iter().find(|(id, _r)| top.item_has_id(id)) {
+
+                if let Some((id, _)) = zones.iter().find(|(id, _r)| top.item_has_id(id)) {
                     println!["Target: {:#?}", id];
+
                     let path = top.path_to_id(id).unwrap();
                     println!["{:?}", path];
                     let item = ConstructorItem::new_song(key);
                     top.push_to_path(VecDeque::from(path), item);
-                    // println!["{:?}", result];
-
-                    // This should always be an operation
-                    if let ConstructorItem::Operation(op) = top {
-                        self.settings.operation_constructor = op;
+                } else if let Some((id, _)) = zones.first() {
+                    if *id == WId::new("base_drop_target") {
+                        top.push_to_path(VecDeque::new(), ConstructorItem::new_song(key))
                     }
                 }
 
+                // This should always be an operation
+                if let ConstructorItem::Operation(op) = top {
+                    self.settings.operation_constructor = op;
+                }
                 Cm::none()
             }
         }

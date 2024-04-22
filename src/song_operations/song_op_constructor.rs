@@ -113,7 +113,7 @@ impl ConstructorItem {
                 if WId::from(op.id.0.clone()) == *id {
                     true
                 } else {
-                    op.list.iter_mut().map(|i| i.item_has_id(id)).count() > 0
+                    op.list.iter_mut().any(|i| i.item_has_id(id))
                 }
             }
         }

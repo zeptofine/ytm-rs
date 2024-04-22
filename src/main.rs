@@ -1,3 +1,5 @@
+// #![windows_subsystem = "windows"]
+
 use std::fmt::Debug;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
