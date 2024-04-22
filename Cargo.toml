@@ -34,5 +34,5 @@ features = ["debug", "lazy", "tokio", "image", "canvas", "advanced"]
 
 [dependencies.iced_drop]
 git = "https://github.com/zeptofine/iced_drop"
+branch = "offset_scrollables"
 # path = "../iced_drop"
-branch = "with_drag"
