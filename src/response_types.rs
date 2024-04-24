@@ -1,6 +1,15 @@
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::borrow::Borrow;
 
 use serde::{Deserialize, Serialize};
+
+fn r(len: usize) -> String {
+    thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(len)
+        .map(char::from)
+        .collect()
+}
 
 pub type UrlString = String;
 pub type IDKey = String;
@@ -57,6 +66,35 @@ pub struct YTSong {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
     pub tags: Vec<String>,
+}
+impl YTSong {
+    // Creates a basic Youtube Song for testing purposes
+    #![allow(unused)] // It's used for test funcs
+    pub fn basic() -> Self {
+        Self {
+            id: r(11),
+            title: r(14),
+            description: None,
+            channel: r(10),
+            view_count: Some(99_999),
+            thumbnail: "https://placehold.co/960x720".to_string(),
+            album: None,
+            webpage_url: "...".to_string(),
+            duration: 120.0,
+            artists: Some(
+                ["Me!!".into()]
+                    .into_iter()
+                    .cycle()
+                    .take(thread_rng().gen_range(1..=3))
+                    .collect(),
+            ),
+            tags: ["Tag".into()]
+                .into_iter()
+                .cycle()
+                .take(thread_rng().gen_range(0..=5))
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

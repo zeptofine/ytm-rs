@@ -1,7 +1,7 @@
 use iced::{
     alignment::Vertical,
-    widget::{button, column, container, container::Id as CId, row, text, Column, Image, Row},
-    Alignment, Command as Cm, Element, Length,
+    widget::{column, container, row, text, Column, Image, Row},
+    Command as Cm, Element, Length,
 };
 
 use serde::{Deserialize, Serialize};
@@ -12,14 +12,6 @@ use crate::{
     styling::SongStyle,
     thumbnails::{get_thumbnail, ThumbnailState},
 };
-
-// use std::path::PathBuf;
-// use iced::{
-//     alignment::Horizontal,
-//     widget::{image::Handle, vertical_space, Space},
-//     Alignment,
-// };
-// use crate::response_types::UrlString;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Song {
