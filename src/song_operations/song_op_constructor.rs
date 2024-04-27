@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     settings::{SongKey, SongMap},
-    song::ClosableSongMessage,
     styling::FullYtmrsScheme,
 };
 
@@ -141,28 +140,28 @@ fn test_path_to_id() {
 
 #[derive(Debug, Clone)]
 pub enum CItemMessage {
-    Song(ClosableSongMessage),
     Operation(Box<SongOpMessage>),
 }
 
 #[derive(Debug, Clone)]
 pub enum SongOpMessage {
+    // User input
+    NewGroup,
+    Generate,
+    ChangeN(u32),
+    Collapse,
+    Uncollapse,
     ChangeOperation(ActualRecursiveOps),
     CloseSelf,
+
     Add(ConstructorItem),
     Remove(usize),
-    NewGroup,
 
+    // Drag-n-drop
     Dropped(WId, iced::Point, iced::Rectangle),
     HandleZones(WId, Vec<(iced::advanced::widget::Id, iced::Rectangle)>),
 
     ItemMessage(usize, CItemMessage),
-    Generate,
-
-    Collapse,
-    Uncollapse,
-
-    ChangeN(u32),
 
     Null,
 }
@@ -402,16 +401,9 @@ impl SongOpConstructor {
                 let item = &mut self.list[idx];
                 match item {
                     ConstructorItem::Song(_key, _sid) => match msg {
-                        CItemMessage::Song(msg) => match msg {
-                            ClosableSongMessage::Closed => {
-                                self.list.remove(idx);
-                                UpdateResult::None
-                            }
-                        },
                         CItemMessage::Operation(_) => todo!(), // Uh oh!!! This should be impossible!!!
                     },
                     ConstructorItem::Operation(op) => match msg {
-                        CItemMessage::Song(_) => todo!(), // Uh oh!!! This should ALSO be impossible!!!
                         CItemMessage::Operation(somsg) => match *somsg {
                             SongOpMessage::CloseSelf => {
                                 self.list.remove(idx);

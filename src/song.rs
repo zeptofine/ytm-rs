@@ -115,8 +115,3 @@ pub enum SongMessage {
     ThumbnailGathered(ThumbnailState),
     ThumnailGatherFailure,
 }
-
-#[derive(Debug, Clone)]
-pub enum ClosableSongMessage {
-    Closed,
-}
