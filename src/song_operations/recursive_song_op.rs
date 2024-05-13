@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::response_types::IDKey;
+use crate::settings::SongKey;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum InfLoopType {
@@ -12,7 +12,7 @@ pub enum InfLoopType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RecursiveSongOp {
     // Plays a song.
-    SinglePlay(IDKey),
+    SinglePlay(SongKey),
     // Plays a list of songs once.
     PlayOnce(Vec<RecursiveSongOp>),
     // Loops a list of songs entirely N times.

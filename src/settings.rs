@@ -1,11 +1,28 @@
-use std::{collections::HashMap, env, path::PathBuf};
+use std::path::PathBuf;
 
 use async_std::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{cache_handlers::CacheHandler, song::Song, song_operations::SongOpConstructor};
+use crate::{
+    song_cache::{CacheInterface, SongCache},
+    song_operations::SongOpConstructor,
+};
 
 pub type SongKey = String;
+
+pub fn project_directory() -> PathBuf {
+    if let Some(project_dirs) = directories_next::ProjectDirs::from("rs", "zeptofine", "ytm-rs") {
+        project_dirs.data_dir().into()
+    } else {
+        std::env::current_dir().unwrap_or_default()
+    }
+}
+
+pub fn settings_path() -> PathBuf {
+    let mut path = project_directory();
+    path.push("songlist.json");
+    path
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTMRUserSettings {
@@ -18,48 +35,16 @@ impl Default for YTMRUserSettings {
     }
 }
 
-pub type SongMap = HashMap<SongKey, Song>;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct YTMRSettings {
-    pub saved_songs: SongMap,
-    pub index: CacheHandler,
+    #[serde(skip)]
+    pub cached_songs: SongCache,
+    // todo: combine queue and queue_arcs
     pub queue: Vec<SongKey>,
+    #[serde(skip)]
+    pub queue_cache: CacheInterface,
     pub operation_constructor: SongOpConstructor,
     pub user_settings: YTMRUserSettings,
-}
-
-impl YTMRSettings {
-    fn validate(self) -> Self {
-        Self {
-            saved_songs: self.saved_songs,
-            index: match self.index.validate_paths() {
-                Some(new_idx) => new_idx,
-                None => self.index,
-            },
-            queue: self.queue,
-            operation_constructor: self.operation_constructor,
-            user_settings: self.user_settings,
-        }
-    }
-}
-
-impl Default for YTMRSettings {
-    fn default() -> Self {
-        let index = CacheHandler::new({
-            let mut dir = env::current_dir().unwrap();
-            dir.push("cache");
-            dir
-        });
-
-        Self {
-            saved_songs: HashMap::new(),
-            index,
-            queue: vec![],
-            user_settings: YTMRUserSettings::default(),
-            operation_constructor: SongOpConstructor::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -76,25 +61,12 @@ pub enum SaveError {
 }
 
 impl YTMRSettings {
-    pub fn path() -> PathBuf {
-        let mut path = if let Some(project_dirs) =
-            directories_next::ProjectDirs::from("rs", "zeptofine", "ytm-rs")
-        {
-            project_dirs.data_dir().into()
-        } else {
-            std::env::current_dir().unwrap_or_default()
-        };
-        path.push("songlist.json");
-        path
-    }
-
     pub async fn load_default() -> Result<YTMRSettings, LoadError> {
-        Self::load(Self::path()).await
+        Self::load(settings_path()).await
     }
 
-    pub async fn load(path: PathBuf) -> Result<YTMRSettings, LoadError> {
+    pub async fn load(path: PathBuf) -> Result<Self, LoadError> {
         let mut contents = String::new();
-        println!["Reading: {path:?}"];
         let mut file = async_std::fs::File::open(path)
             .await
             .map_err(|_| LoadError::File)?;
@@ -102,14 +74,13 @@ impl YTMRSettings {
         file.read_to_string(&mut contents)
             .await
             .map_err(|_| LoadError::File)?;
-        let settings: YTMRSettings =
-            serde_json::from_str(&contents).map_err(|_| LoadError::Format)?;
-        Ok(settings.validate())
+        let settings: Self = serde_json::from_str(&contents).map_err(|_| LoadError::Format)?;
+        Ok(settings)
     }
 
     pub async fn save(self) -> Result<PathBuf, SaveError> {
         let json = serde_json::to_string_pretty(&self).map_err(|_| SaveError::Format)?;
-        let path = Self::path();
+        let path = settings_path();
         if let Some(dir) = path.parent() {
             async_std::fs::create_dir_all(dir)
                 .await

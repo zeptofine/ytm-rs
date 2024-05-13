@@ -1,4 +1,5 @@
 from queue import Queue
+import sys
 from threading import Thread
 from typing import TypedDict
 from urllib import parse as urlparse
@@ -6,6 +7,7 @@ from urllib import parse as urlparse
 import orjson
 from flask import Flask, request, logging
 from yt_dlp import YoutubeDL
+
 
 app = Flask(__name__)
 
@@ -34,7 +36,7 @@ opts = {
 
 @app.route("/")
 def main():
-    return "Hello World!"
+    return "YTM_RS_BACKEND"
 
 
 class RequestInfoDict(TypedDict):
@@ -140,4 +142,8 @@ def download():
 
 
 if __name__ == "__main__":
-    app.run(port=55001)
+    print(sys.argv)
+    port = 55001
+    if len(sys.argv) > 1:
+        port = int(sys.argv[1])
+    app.run(port=port)

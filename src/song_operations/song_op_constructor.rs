@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use iced::{
     advanced::widget::Id as WId,
@@ -10,7 +10,9 @@ use iced_drop::{droppable, zones_on_point};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    settings::{SongKey, SongMap},
+    settings::SongKey,
+    song::SongData,
+    song_cache::{CacheInterface, SongCache},
     styling::FullYtmrsScheme,
 };
 
@@ -53,11 +55,6 @@ impl ActualRecursiveOps {
     }
 }
 
-#[derive(Debug)]
-pub enum PushErr {
-    NotFound,
-}
-
 pub trait TreeDirected {
     // TODO: These methods are not as ass but they could be better probably
 
@@ -70,12 +67,24 @@ pub trait TreeDirected {
     }
 
     fn path_to_id(&self, id: &WId) -> Option<Vec<usize>>;
+
+    fn item_at_path(&self, pth: VecDeque<usize>) -> Option<&ConstructorItem>;
+
+    fn item_at_path_mut(&mut self, pth: VecDeque<usize>) -> Option<&mut ConstructorItem>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ConstructorItem {
     Song(SongKey, #[serde(skip)] ItemId),
     Operation(SongOpConstructor),
+}
+impl ConstructorItem {
+    pub fn all_song_keys(&self) -> Vec<&SongKey> {
+        match *self {
+            ConstructorItem::Song(ref key, _) => vec![key],
+            ConstructorItem::Operation(ref op) => op.all_song_keys_rec().collect(),
+        }
+    }
 }
 impl From<SongKey> for ConstructorItem {
     fn from(value: SongKey) -> Self {
@@ -115,27 +124,54 @@ impl TreeDirected for ConstructorItem {
             ConstructorItem::Operation(op) => op.path_to_id(id),
         }
     }
+
+    fn item_at_path(&self, pth: VecDeque<usize>) -> Option<&ConstructorItem> {
+        if pth.is_empty() {
+            return Some(self);
+        }
+        match self {
+            ConstructorItem::Song(_, _) => None,
+            ConstructorItem::Operation(op) => op.item_at_path(pth),
+        }
+    }
+
+    fn item_at_path_mut(&mut self, pth: VecDeque<usize>) -> Option<&mut ConstructorItem> {
+        if pth.is_empty() {
+            return Some(self);
+        }
+        match self {
+            ConstructorItem::Song(_, _) => None,
+            ConstructorItem::Operation(op) => op.item_at_path_mut(pth),
+        }
+    }
 }
 
-#[test]
-fn test_path_to_id() {
-    let song_id = ItemId::default();
-    let song = ConstructorItem::Song("hell".to_string(), song_id.clone());
-    let song_id2 = ItemId::default();
-    let song2 = ConstructorItem::Song("hell".to_string(), song_id2.clone());
+#[cfg(test)]
+mod tests {
+    use iced::advanced::widget::Id as WId;
 
-    let subtree = SongOpConstructor::from(vec![song2]);
-    let subtree_id = subtree.id.clone();
+    use crate::song_operations::{ConstructorItem, ItemId, SongOpConstructor, TreeDirected};
 
-    let list = vec![song, ConstructorItem::Operation(subtree)];
-    let tree = SongOpConstructor::from(list);
+    #[test]
+    fn test_path_to_id() {
+        let song_id = ItemId::default();
+        let song = ConstructorItem::Song("hell".to_string(), song_id.clone());
+        let song_id2 = ItemId::default();
+        let song2 = ConstructorItem::Song("hell".to_string(), song_id2.clone());
 
-    let unused_id = ItemId::default();
+        let subtree = SongOpConstructor::from(vec![song2]);
+        let subtree_id = subtree.id.clone();
 
-    assert_eq![Some(vec![0]), tree.path_to_id(&WId::from(song_id.0))];
-    assert_eq![Some(vec![1]), tree.path_to_id(&WId::from(subtree_id.0))];
-    assert_eq![Some(vec![1, 0]), tree.path_to_id(&WId::from(song_id2.0))];
-    assert_eq![None, tree.path_to_id(&WId::from(unused_id.0))];
+        let list = vec![song, ConstructorItem::Operation(subtree)];
+        let tree = SongOpConstructor::from(list);
+
+        let unused_id = ItemId::default();
+
+        assert_eq![Some(vec![0]), tree.path_to_id(&WId::from(song_id.0))];
+        assert_eq![Some(vec![1]), tree.path_to_id(&WId::from(subtree_id.0))];
+        assert_eq![Some(vec![1, 0]), tree.path_to_id(&WId::from(song_id2.0))];
+        assert_eq![None, tree.path_to_id(&WId::from(unused_id.0))];
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -154,12 +190,12 @@ pub enum SongOpMessage {
     ChangeOperation(ActualRecursiveOps),
     CloseSelf,
 
-    Add(ConstructorItem),
     Remove(usize),
 
     // Drag-n-drop
     Dropped(WId, iced::Point, iced::Rectangle),
     HandleZones(WId, Vec<(iced::advanced::widget::Id, iced::Rectangle)>),
+    SongClicked(WId),
 
     ItemMessage(usize, CItemMessage),
 
@@ -172,15 +208,6 @@ pub enum UpdateResult {
     Move(WId, WId), // from, to
     None,
 }
-
-// #[derive(Debug, Clone, Default)]
-// pub enum SelectionMode {
-//     #[default]
-//     None,
-//     Single(usize),
-//     Multiple(Vec<usize>),
-//     Range(Range<usize>),
-// }
 
 fn verify_n(txt: String) -> SongOpMessage {
     txt.parse::<u32>()
@@ -210,8 +237,11 @@ impl Default for ItemId {
 pub struct SongOpConstructor {
     #[serde(skip)]
     id: ItemId,
-    operation: ActualRecursiveOps,
-    list: Vec<ConstructorItem>,
+    pub operation: ActualRecursiveOps,
+    pub list: Vec<ConstructorItem>,
+    #[serde(skip)]
+    cache: CacheInterface,
+
     collapsible: bool,
     collapsed: bool,
     // used for certain operations, like LoopNTimes and Stretch
@@ -223,6 +253,7 @@ impl Default for SongOpConstructor {
             id: Default::default(),
             operation: ActualRecursiveOps::PlayOnce,
             list: vec![],
+            cache: CacheInterface::default(),
             collapsible: true,
             collapsed: false,
             n: 1,
@@ -235,10 +266,24 @@ impl SongOpConstructor {
             id: ItemId::default(),
             operation,
             list,
+            cache: CacheInterface::default(),
             collapsible: true,
             collapsed: false,
             n: 1,
         }
+    }
+
+    /// Returns all the song keys of this [`SongOpConstructor`].
+    pub fn all_song_keys(&self) -> impl Iterator<Item = &SongKey> {
+        self.list.iter().filter_map(|item| match item {
+            ConstructorItem::Song(key, _) => Some(key),
+            ConstructorItem::Operation(_) => None,
+        })
+    }
+
+    // Same as all_song_keys but recursive
+    pub fn all_song_keys_rec(&self) -> impl Iterator<Item = &SongKey> {
+        self.list.iter().flat_map(|item| item.all_song_keys())
     }
 
     fn header(
@@ -301,27 +346,38 @@ impl SongOpConstructor {
             .align_items(iced::Alignment::Center)
     }
 
-    fn get_children<'a>(
-        &'a self,
-        song_map: &'a SongMap,
-        scheme: &FullYtmrsScheme,
-    ) -> Row<'_, SongOpMessage, Theme, Renderer> {
+    fn get_children(&self, scheme: &FullYtmrsScheme) -> Row<'_, SongOpMessage, Theme, Renderer> {
+        let songs: HashSet<String> = self
+            .list
+            .iter()
+            .filter_map(|item| match item {
+                ConstructorItem::Song(key, _) => Some(key),
+                ConstructorItem::Operation(_) => None,
+            })
+            .cloned()
+            .collect();
+        let map: HashMap<String, _> = self.cache.get(&songs).collect();
+
         let items = self.list.iter().enumerate().map(|(idx, item)| match item {
             ConstructorItem::Song(key, sid) => {
-                let song = &song_map[key];
-                let img: Element<SongOpMessage> = song.get_img(75, 75);
-
+                let data = {
+                    match map.get(key) {
+                        Some(arc) => {
+                            let x = arc.lock().unwrap();
+                            x.as_data()
+                        }
+                        None => SongData::mystery(),
+                    }
+                };
+                // let img: Element<SongOpMessage> = song.get_img(75, 75);
+                let wid = WId::from(sid.0.clone());
                 container(
                     row![
-                        button(img).padding(0),
-                        droppable(song.get_data())
+                        droppable(data.column())
                             .drag_mode(false, true)
                             .drag_hide(true)
-                            .on_drop(move |pt, rec| SongOpMessage::Dropped(
-                                WId::from(sid.0.clone()),
-                                pt,
-                                rec
-                            )),
+                            .on_single_click(SongOpMessage::SongClicked(wid.clone()))
+                            .on_drop(move |pt, rec| SongOpMessage::Dropped(wid.clone(), pt, rec)),
                         text(format!("{:?}", sid.0)),
                         button("x").on_press(SongOpMessage::Remove(idx))
                     ]
@@ -331,7 +387,7 @@ impl SongOpConstructor {
                 .into()
             }
             ConstructorItem::Operation(constructor) => {
-                constructor.view_nested(song_map, scheme).map(move |msg| {
+                constructor.view_nested(scheme).map(move |msg| {
                     SongOpMessage::ItemMessage(idx, CItemMessage::Operation(Box::new(msg)))
                 })
             }
@@ -344,16 +400,12 @@ impl SongOpConstructor {
         .width(Length::Fill)
     }
 
-    pub fn view<'a>(
-        &'a self,
-        song_map: &'a SongMap,
-        scheme: &FullYtmrsScheme,
-    ) -> Element<SongOpMessage> {
+    pub fn view(&self, scheme: &FullYtmrsScheme) -> Element<SongOpMessage> {
         container(
             column![self.header(scheme, false).width(Length::Fill)]
                 .push_maybe(match self.collapsed {
                     true => None,
-                    false => Some(self.get_children(song_map, scheme)),
+                    false => Some(self.get_children(scheme)),
                 })
                 .width(Length::Fill),
         )
@@ -361,25 +413,17 @@ impl SongOpConstructor {
         .into()
     }
 
-    pub fn view_nested<'a>(
-        &'a self,
-        song_map: &'a SongMap,
-        scheme: &FullYtmrsScheme,
-    ) -> Element<SongOpMessage> {
+    pub fn view_nested(&self, scheme: &FullYtmrsScheme) -> Element<SongOpMessage> {
         container(
             column![self.header(scheme, true).width(Length::Fill)]
                 .push_maybe(match self.collapsed {
                     true => None,
-                    false => Some(self.get_children(song_map, scheme)),
+                    false => Some(self.get_children(scheme)),
                 })
                 .width(Length::Fill),
         )
         .id(self.id.0.clone())
         .into()
-    }
-
-    pub fn push(&mut self, item: ConstructorItem) {
-        self.list.push(item);
     }
 
     pub fn insert(&mut self, idx: usize, item: ConstructorItem) {
@@ -389,10 +433,7 @@ impl SongOpConstructor {
     pub fn update(&mut self, msg: SongOpMessage) -> UpdateResult {
         match msg {
             SongOpMessage::CloseSelf => UpdateResult::Cm(Cm::none()),
-            SongOpMessage::Add(item) => {
-                self.list.push(item);
-                UpdateResult::None
-            }
+
             SongOpMessage::Remove(idx) => {
                 self.list.remove(idx);
                 UpdateResult::None
@@ -444,10 +485,13 @@ impl SongOpConstructor {
             SongOpMessage::HandleZones(original_id, zones) => {
                 // TODO: This assumes the last zone was the desired target
                 match zones.last() {
-                    Some((target_id, _rec)) => match original_id == *target_id {
-                        true => UpdateResult::SongClicked(original_id),
-                        false => UpdateResult::Move(original_id, target_id.clone()),
-                    },
+                    Some((target_id, _rec)) => {
+                        if original_id != *target_id {
+                            UpdateResult::Move(original_id, target_id.clone())
+                        } else {
+                            UpdateResult::None
+                        }
+                    }
                     None => UpdateResult::None,
                 }
             }
@@ -472,7 +516,25 @@ impl SongOpConstructor {
 
             // Pointer for things like inputting a non-integer value into the "N" field.
             SongOpMessage::Null => UpdateResult::None,
+            SongOpMessage::SongClicked(wid) => UpdateResult::SongClicked(wid),
         }
+    }
+
+    pub fn update_cache(&mut self, sc: &mut SongCache) {
+        let used_songs: HashSet<_> = self.all_song_keys_rec().cloned().collect();
+        self.cache.replace(sc.fetch(&used_songs));
+        for item in self.list.iter_mut() {
+            match item {
+                ConstructorItem::Operation(op) => {
+                    op.update_cache(sc);
+                }
+                ConstructorItem::Song(_, _) => (),
+            }
+        }
+    }
+
+    pub fn cache_size(&self) -> usize {
+        self.cache.len()
     }
 
     pub fn build(&self) -> RecursiveSongOp {
@@ -552,6 +614,31 @@ impl TreeDirected for SongOpConstructor {
                 }
                 None => None,
             },
+        }
+    }
+
+    fn item_at_path(&self, mut pth: VecDeque<usize>) -> Option<&ConstructorItem> {
+        if pth.is_empty() {
+            return None;
+        }
+        let next_idx = pth.pop_front()?;
+        let subitem = &self.list.get(next_idx)?;
+        if pth.is_empty() {
+            Some(subitem)
+        } else {
+            subitem.item_at_path(pth)
+        }
+    }
+    fn item_at_path_mut(&mut self, mut pth: VecDeque<usize>) -> Option<&mut ConstructorItem> {
+        if pth.is_empty() {
+            return None;
+        }
+        let next_idx = pth.pop_front()?;
+        let subitem = self.list.get_mut(next_idx)?;
+        if pth.is_empty() {
+            Some(subitem)
+        } else {
+            subitem.item_at_path_mut(pth)
         }
     }
 }

@@ -20,6 +20,15 @@ impl Default for SongStyle {
         })
     }
 }
+impl SongStyle {
+    pub fn update(&self, selected: bool) -> container::Style {
+        let mut style = self.0;
+        if selected {
+            style.background = Some(Background::Color(Color::from_rgb8(0x32, 0x52, 0x7b)));
+        }
+        style
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ScrollableStyle(pub scrollable::Style);

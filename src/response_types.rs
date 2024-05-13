@@ -1,18 +1,10 @@
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::borrow::Borrow;
 
 use serde::{Deserialize, Serialize};
 
-fn r(len: usize) -> String {
-    thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(len)
-        .map(char::from)
-        .collect()
-}
+use crate::{settings::SongKey, song::Song};
 
 pub type UrlString = String;
-pub type IDKey = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Thumbnail {
@@ -23,7 +15,7 @@ pub struct Thumbnail {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTabEntry {
-    pub id: IDKey,
+    pub id: SongKey,
     pub url: UrlString,
     pub title: String,
     pub description: Option<String>,
@@ -36,7 +28,7 @@ pub struct YTabEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTab {
-    pub id: IDKey,
+    pub id: SongKey,
     pub title: String,
     pub channel: Option<String>,
     pub view_count: Option<usize>,
@@ -48,56 +40,6 @@ pub struct YTab {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct YTSong {
-    pub id: IDKey,
-    pub title: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    pub channel: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub view_count: Option<usize>,
-    pub thumbnail: UrlString,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub album: Option<String>,
-    pub webpage_url: UrlString,
-    pub duration: f32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub artists: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    #[serde(default)]
-    pub tags: Vec<String>,
-}
-impl YTSong {
-    // Creates a basic Youtube Song for testing purposes
-    #![allow(unused)] // It's used for test funcs
-    pub fn basic() -> Self {
-        Self {
-            id: r(11),
-            title: r(14),
-            description: None,
-            channel: r(10),
-            view_count: Some(99_999),
-            thumbnail: "https://placehold.co/960x720".to_string(),
-            album: None,
-            webpage_url: "...".to_string(),
-            duration: 120.0,
-            artists: Some(
-                ["Me!!".into()]
-                    .into_iter()
-                    .cycle()
-                    .take(thread_rng().gen_range(1..=3))
-                    .collect(),
-            ),
-            tags: ["Tag".into()]
-                .into_iter()
-                .cycle()
-                .take(thread_rng().gen_range(0..=5))
-                .collect(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum YTIEKey {
     Youtube,
     YoutubeTab,
@@ -106,7 +48,7 @@ pub enum YTIEKey {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTSearchEntry {
-    pub id: IDKey,
+    pub id: SongKey,
     pub title: Option<String>,
     pub ie_key: YTIEKey,
     pub url: UrlString,
@@ -136,7 +78,7 @@ impl From<serde_json::Error> for YTResponseError {
 pub enum YTResponseType {
     Tab(YTab),
     Search(YTMSearch),
-    Song(YTSong),
+    Song(Song),
 }
 
 #[derive(Deserialize)]

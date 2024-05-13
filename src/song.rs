@@ -1,66 +1,116 @@
-use iced::{
-    alignment::Vertical,
-    widget::{column, container, row, text, Column, Image, Row},
-    Command as Cm, Element, Length,
-};
+use std::{collections::HashMap, path::PathBuf};
+
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    cache_handlers::{CacheHandle, YtmCache as _},
-    response_types::YTSong,
-    styling::SongStyle,
-    thumbnails::{get_thumbnail, ThumbnailState},
+use iced::{
+    widget::{column, text, Column},
+    Length,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Song {
-    #[serde(skip)]
-    pub thumbnail: ThumbnailState,
+use crate::{response_types::UrlString, settings::SongKey};
 
-    pub data: YTSong,
+fn r(len: usize) -> String {
+    thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(len)
+        .map(char::from)
+        .collect()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Song {
+    pub id: SongKey,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub channel: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub view_count: Option<usize>,
+    pub thumbnail: UrlString,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub album: Option<String>,
+    pub webpage_url: UrlString,
+    pub duration: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artists: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    pub tags: Vec<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thumbnail_path: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub song_path: Option<PathBuf>,
 }
 
 impl Song {
-    pub fn new(song: YTSong) -> Self {
+    // Creates a basic Youtube Song for testing purposes
+    #![allow(unused)] // It's used for test funcs
+    pub fn basic() -> Self {
         Self {
-            thumbnail: ThumbnailState::Unknown,
-            data: song,
+            id: r(11),
+            title: r(14),
+            description: None,
+            channel: r(10),
+            view_count: Some(thread_rng().gen_range(0..10_000_000)),
+            thumbnail: "https://placehold.co/960x720".to_string(),
+            album: None,
+            webpage_url: "...".to_string(),
+            duration: thread_rng().gen_range(0.0..(12.0 * 60.0 * 60.0)),
+            artists: Some(
+                ["Me!!".into()]
+                    .into_iter()
+                    .cycle()
+                    .take(thread_rng().gen_range(1..=3))
+                    .collect(),
+            ),
+            tags: ["Tag".into()]
+                .into_iter()
+                .cycle()
+                .take(thread_rng().gen_range(0..=5))
+                .collect(),
+            thumbnail_path: None,
+            song_path: None,
         }
     }
 
-    pub fn load(&self, handle: &mut CacheHandle) -> Cm<SongMessage> {
-        Cm::batch([match &self.thumbnail {
-            ThumbnailState::Unknown => Cm::perform(
-                get_thumbnail(self.data.thumbnail.clone(), handle.ensure_thumbnail()),
-                |r| match r {
-                    Err(_) => SongMessage::ThumnailGatherFailure,
-                    Ok(state) => SongMessage::ThumbnailGathered(state),
-                },
-            ),
-            _ => Cm::none(),
-        }])
+    pub fn as_data(&self) -> SongData {
+        SongData {
+            title: self.title.clone(),
+            channel: self.channel.clone(),
+            artists: self.artists.clone(),
+            duration: self.duration,
+        }
     }
+}
 
-    pub fn get_img<Msg>(&self, height: u16, width: u16) -> Element<Msg> {
-        match &self.thumbnail {
-            ThumbnailState::Downloaded { path: _, handle } => Image::new(handle.clone())
-                .height(height)
-                .width(width)
-                .content_fit(iced::ContentFit::Cover)
-                .into(),
-            _ => text("<...>")
-                .height(height)
-                .width(width)
-                .vertical_alignment(Vertical::Center)
-                .into(),
+pub fn to_hash_map(songs: impl Iterator<Item = Song>) -> HashMap<String, Song> {
+    songs.map(|s| (s.id.clone(), s)).collect()
+}
+
+pub struct SongData {
+    pub title: String,
+    pub channel: String,
+    pub artists: Option<Vec<String>>,
+    pub duration: f32,
+}
+impl SongData {
+    /// Used for placeholders of songs that are not cached yet
+    pub fn mystery() -> Self {
+        Self {
+            title: "?????".to_string(),
+            channel: "???".to_string(),
+            artists: None,
+            duration: -1.0,
         }
     }
 
     fn format_duration(&self) -> String {
-        let minutes = self.data.duration / 60.0;
+        let minutes = self.duration / 60.0;
         let hours = minutes / 60.0;
-        let seconds = (self.data.duration % 60.0).floor() as u8;
+        let seconds = (self.duration % 60.0).floor() as u8;
         match hours.floor() == 0.0 {
             true => format!("{}:{:0>2}", minutes.floor(), seconds),
             false => format!("{}:{:0>2}:{:0>2}", hours.floor(), minutes.floor(), seconds,),
@@ -68,15 +118,15 @@ impl Song {
     }
 
     fn format_artists(&self) -> String {
-        match &self.data.artists {
-            None => self.data.channel.clone(),
+        match &self.artists {
+            None => self.channel.clone(),
             Some(v) => v.join(" & "),
         }
     }
 
-    pub fn get_data<'a, M: 'a>(&'a self) -> Column<'a, M, iced::Theme, iced::Renderer> {
+    pub fn column<'a, M: 'a>(self) -> Column<'a, M, iced::Theme, iced::Renderer> {
         column![
-            text(&self.data.title),
+            text(self.title.clone()),
             text(self.format_duration()),
             text(self.format_artists()),
         ]
@@ -84,34 +134,4 @@ impl Song {
         .padding(5)
         .width(Length::Fill)
     }
-
-    fn img_and_data<'a, M: 'a>(
-        &'a self,
-        width: u16,
-        height: u16,
-    ) -> Row<'a, M, iced::Theme, iced::Renderer> {
-        row![self.get_img(height, width), self.get_data(),]
-    }
-
-    pub fn view(&self, appearance: &SongStyle) -> Element<SongMessage> {
-        let song_appearance = appearance.0;
-        container(self.img_and_data(100, 100))
-            .style(move |_| song_appearance)
-            .padding(0)
-            .into()
-    }
-
-    pub fn update(&mut self, msg: SongMessage) -> Cm<SongMessage> {
-        if let SongMessage::ThumbnailGathered(state) = msg {
-            self.thumbnail = state;
-        };
-
-        Cm::none()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum SongMessage {
-    ThumbnailGathered(ThumbnailState),
-    ThumnailGatherFailure,
 }

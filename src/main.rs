@@ -11,23 +11,25 @@ use iced::{
     theme::{Palette, Theme},
     widget::{button, column, container, text},
 };
-use ytmrs::{Ytmrs, YtmrsMsg};
 
-mod cache_handlers;
-mod chunked_list;
+mod audio;
+mod backend_handler;
 mod response_types;
 mod settings;
 mod song;
+mod song_cache;
+mod song_list;
 mod song_operations;
 mod styling;
 mod thumbnails;
+mod user_input;
 mod ytmrs;
 
 use crate::{
-    response_types::IDKey,
     settings::{LoadError, SaveError, YTMRSettings},
     styling::{transition_scheme, SchemeState},
 };
+use ytmrs::{Ytmrs, YtmrsMsg};
 
 pub const BACKGROUND_TRANSITION_DURATION: Duration = Duration::from_millis(500);
 pub const BACKGROUND_TRANSITION_RATE: Duration = Duration::from_millis(1000 / 20); // ~15fps
@@ -49,18 +51,18 @@ struct Main {
 // a Box.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
-enum YTMRSMessage {
+enum MAINMessage {
     Loaded(Result<YTMRSettings, LoadError>),
     Save,
     Saved(Result<PathBuf, SaveError>),
-    MainMessage(YtmrsMsg),
+    YtmrsMessage(YtmrsMsg),
 
     UpdateVisibleBackground(SchemeState),
 }
 
 impl Main {
-    fn load() -> Cm<YTMRSMessage> {
-        Cm::perform(YTMRSettings::load_default(), YTMRSMessage::Loaded)
+    fn load() -> Cm<MAINMessage> {
+        Cm::perform(YTMRSettings::load_default(), MAINMessage::Loaded)
     }
 
     fn theme(&self) -> Theme {
@@ -87,18 +89,21 @@ impl Main {
         }
     }
 
-    fn subscription(&self) -> Subscription<YTMRSMessage> {
-        Subscription::none()
+    fn subscription(&self) -> Subscription<MAINMessage> {
+        match &self.state {
+            Some(state) => state.ytmrs.subscription().map(MAINMessage::YtmrsMessage),
+            None => Subscription::none(),
+        }
     }
 
-    fn update(&mut self, message: YTMRSMessage) -> Cm<YTMRSMessage> {
+    fn update(&mut self, message: MAINMessage) -> Cm<MAINMessage> {
         match &mut self.state {
             None => match message {
-                YTMRSMessage::Loaded(o) => {
+                MAINMessage::Loaded(o) => {
                     let (s, coms) = match o {
                         Ok(settings) => {
                             let mut main = Ytmrs::new(settings);
-                            let commands = main.load().map(YTMRSMessage::MainMessage);
+                            let commands = main.load().map(MAINMessage::YtmrsMessage);
                             (main, commands)
                         }
                         Err(_) => (Ytmrs::default(), Cm::none()),
@@ -114,7 +119,7 @@ impl Main {
                 _ => Cm::none(),
             },
             Some(ref mut state) => match message {
-                YTMRSMessage::UpdateVisibleBackground(scheme_state) => {
+                MAINMessage::UpdateVisibleBackground(scheme_state) => {
                     match scheme_state {
                         SchemeState::Started(_) => todo!(), // how
                         SchemeState::Transitioning(_) => {
@@ -122,8 +127,8 @@ impl Main {
 
                             Cm::perform(
                                 transition_scheme(scheme_state),
-                                |state: SchemeState| -> YTMRSMessage {
-                                    YTMRSMessage::UpdateVisibleBackground(state)
+                                |state: SchemeState| -> MAINMessage {
+                                    MAINMessage::UpdateVisibleBackground(state)
                                 },
                             )
                         }
@@ -134,7 +139,7 @@ impl Main {
                     }
                 }
 
-                YTMRSMessage::MainMessage(YtmrsMsg::SetNewBackground(k, scheme)) => {
+                MAINMessage::YtmrsMessage(YtmrsMsg::SetNewBackground(k, scheme)) => {
                     let schemestate = SchemeState::Started(Box::new(styling::Started {
                         from: state.state.first_choice().clone(),
                         to: scheme.clone(),
@@ -144,25 +149,25 @@ impl Main {
                     Cm::batch([
                         Cm::perform(
                             transition_scheme(schemestate),
-                            YTMRSMessage::UpdateVisibleBackground,
+                            MAINMessage::UpdateVisibleBackground,
                         ),
                         state
                             .ytmrs
                             .update(YtmrsMsg::SetNewBackground(k, scheme))
-                            .map(YTMRSMessage::MainMessage),
+                            .map(MAINMessage::YtmrsMessage),
                     ])
                     // Cm::perform(, |state| {
                     //     YTMRSMessage::UpdateVisibleBackground(state)
                     // })
                 }
-                YTMRSMessage::MainMessage(msg) => {
-                    state.ytmrs.update(msg).map(YTMRSMessage::MainMessage)
+                MAINMessage::YtmrsMessage(msg) => {
+                    state.ytmrs.update(msg).map(MAINMessage::YtmrsMessage)
                 }
-                YTMRSMessage::Save => {
+                MAINMessage::Save => {
                     state.ytmrs.prepare_to_save();
-                    Cm::perform(state.ytmrs.settings.clone().save(), YTMRSMessage::Saved)
+                    Cm::perform(state.ytmrs.settings.clone().save(), MAINMessage::Saved)
                 }
-                YTMRSMessage::Saved(success) => {
+                MAINMessage::Saved(success) => {
                     match success {
                         Ok(p) => println!["Saved to {p:?}"],
                         Err(e) => println!["{e:?}"],
@@ -174,24 +179,24 @@ impl Main {
         }
     }
 
-    fn view(&self) -> Element<YTMRSMessage> {
+    fn view(&self) -> Element<MAINMessage> {
         match &self.state {
             None => container(
                 text("Loading...")
                     .horizontal_alignment(Horizontal::Center)
-                    .size(5),
+                    .size(50),
             )
+            .align_x(Horizontal::Center)
             .width(Length::Fill)
             .height(Length::Fill)
             .center_y()
             .into(),
             Some(state) => container(column![
-                button(if state.saving { "saving..." } else { "save" })
-                    .on_press(YTMRSMessage::Save),
+                button(if state.saving { "saving..." } else { "save" }).on_press(MAINMessage::Save),
                 state
                     .ytmrs
                     .view(state.state.first_choice().clone())
-                    .map(YTMRSMessage::MainMessage)
+                    .map(MAINMessage::YtmrsMessage)
             ])
             .style(|_| container::Style {
                 background: Some(state.state.first_choice().colors.to_background()),

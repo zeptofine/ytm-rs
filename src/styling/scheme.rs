@@ -17,6 +17,7 @@ use crate::{
 use super::{PickListStyle, PickMenuStyle};
 
 pub trait Interpolable {
+    /// Interpolates between two colors, with a transition rate.
     fn interpolate(&self, other: &Self, t: f32) -> Self;
 }
 

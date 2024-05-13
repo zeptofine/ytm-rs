@@ -1,81 +1,72 @@
-use std::{collections::VecDeque, fmt::Debug};
+use std::{
+    cmp::Ordering,
+    collections::{HashMap, HashSet, VecDeque},
+    fmt::Debug,
+    time,
+};
 
 use iced::{
-    advanced::widget::Id as WId,
-    alignment::{Alignment, Horizontal},
-    widget::{column, container::Id as CId, row, scrollable, text_input, Container, Space},
-    Command as Cm, Element, Length,
+    advanced::{widget::Id as WId, Widget},
+    alignment::Horizontal,
+    keyboard,
+    widget::{
+        column,
+        container::{Container, Id as CId},
+        row, scrollable, Space,
+    },
+    Alignment, Command as Cm, Element, Length, Subscription,
 };
 use iced_drop::{droppable, zones_on_point};
 use once_cell::sync::Lazy;
 use reqwest::{Client, Url};
-use rodio::{OutputStream, OutputStreamHandle, Sink};
 use serde::Serialize;
 
 use crate::{
-    cache_handlers::YtmCache,
-    response_types::{YTResponseError, YTResponseType, YTSong},
-    settings::YTMRSettings,
-    song::{Song, SongMessage},
-    song_operations::{ConstructorItem, SongOpMessage, TreeDirected, UpdateResult},
-    styling::{color_to_argb, BasicYtmrsScheme, FullYtmrsScheme},
-    thumbnails::ThumbnailState,
+    backend_handler::{BackendHandler, BackendLaunchStatus},
+    response_types::{YTResponseError, YTResponseType},
+    settings::{SongKey, YTMRSettings},
+    song::{Song, SongData},
+    song_cache::SongCache,
+    song_operations::{
+        ConstructorItem, OperationTracker, SongOpConstructor, SongOpMessage, SongOpTracker,
+        TreeDirected, UpdateResult,
+    },
+    styling::{BasicYtmrsScheme, FullYtmrsScheme},
+    user_input::{InputMessage, SelectionMode, UserInputs},
 };
 
-static INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
-
-#[derive(Debug, Default)]
-struct UserInputs {
-    url: String,
+#[derive(Debug)]
+pub struct Tickers {
+    cache: (bool, time::Duration),
+    backend_status: (bool, time::Duration),
+    playing_status: (bool, time::Duration),
 }
-
-#[derive(Debug, Clone)]
-pub enum InputMessage {
-    UrlChanged(String),
-    UrlSubmitted,
-}
-
-impl UserInputs {
-    fn view(&self) -> Element<InputMessage> {
-        column![text_input("", &self.url)
-            .id(INPUT_ID.clone())
-            .on_input(InputMessage::UrlChanged)
-            .on_submit(InputMessage::UrlSubmitted)
-            .size(20)
-            .padding(15),]
-        .into()
-    }
-
-    fn update(&mut self, message: InputMessage) -> Cm<InputMessage> {
-        match message {
-            InputMessage::UrlChanged(s) => self.url = s,
-            InputMessage::UrlSubmitted => {}
-        }
-        Cm::none()
-    }
-}
-
-struct YTMRSAudioManager {
-    _stream: OutputStream,
-    _handle: OutputStreamHandle,
-    _sink: Sink,
-}
-
-impl Debug for YTMRSAudioManager {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("YTMRSAudioManager")
-    }
-}
-
-impl Default for YTMRSAudioManager {
+impl Default for Tickers {
     fn default() -> Self {
-        let (stream, handle) = OutputStream::try_default().unwrap();
-        let sink = Sink::try_new(&handle).unwrap();
         Self {
-            _stream: stream,
-            _handle: handle,
-            _sink: sink,
+            cache: (true, time::Duration::from_secs(4)),
+            backend_status: (true, time::Duration::from_secs(10)),
+            playing_status: (false, time::Duration::from_secs(1)),
         }
+    }
+}
+impl Tickers {
+    pub fn subscription(&self) -> Subscription<YtmrsMsg> {
+        let mut subs = vec![];
+        if self.cache.0 {
+            subs.push(iced::time::every(self.cache.1).map(|_| YtmrsMsg::CacheTick));
+        }
+        if self.backend_status.0 {
+            subs.push(
+                iced::time::every(self.backend_status.1).map(|_| YtmrsMsg::BackendStatusTick),
+            );
+        }
+        if self.playing_status.0 {
+            subs.push(
+                iced::time::every(self.playing_status.1).map(|_| YtmrsMsg::PlayingStatusTick),
+            );
+        }
+        Subscription::batch(subs)
     }
 }
 
@@ -83,6 +74,8 @@ impl Default for YTMRSAudioManager {
 pub struct Ytmrs {
     inputs: UserInputs,
     // audio_manager: YTMRSAudioManager,
+    tickers: Tickers,
+    backend_handler: BackendHandler,
     pub settings: YTMRSettings,
 }
 
@@ -91,9 +84,18 @@ pub enum YtmrsMsg {
     Drop(String, iced::Point, iced::Rectangle),
     HandleZones(String, Vec<(iced::advanced::widget::Id, iced::Rectangle)>),
 
-    SongClicked(String),
-    SongMessage(String, SongMessage),
+    CacheTick,
+    BackendStatusTick,
+    BackendStatusPollSuccess,
+    BackendStatusPollFailure(String),
+
+    PlayingStatusTick,
+
+    SongClicked(usize, String),
     InputMessage(InputMessage),
+
+    CachingSuccess(HashSet<String>),
+    CachingFailure,
 
     RequestRecieved(RequestResult),
     RequestParsed(Box<YTResponseType>),
@@ -101,7 +103,9 @@ pub enum YtmrsMsg {
 
     SetNewBackground(String, BasicYtmrsScheme),
 
-    OpConstructorMsg(SongOpMessage),
+    SongOpMsg(SongOpMessage),
+
+    ModifierChanged(keyboard::Modifiers),
 }
 
 #[derive(Debug, Clone)]
@@ -163,40 +167,79 @@ impl Ytmrs {
     }
 
     pub fn load(&mut self) -> Cm<YtmrsMsg> {
-        let mut commands = vec![];
-        for key in self.settings.queue.clone() {
-            if let Some(song) = self.settings.saved_songs.get(&key) {
-                commands.push(
-                    song.load(&mut self.settings.index.get(&key))
-                        .map(move |msg| YtmrsMsg::SongMessage(key.clone(), msg)),
-                )
-            }
-        }
+        let arcs = self
+            .settings
+            .cached_songs
+            .fetch(&self.settings.queue.iter().cloned().collect());
 
-        Cm::batch(commands)
+        self.settings.queue_cache.extend(arcs);
+
+        self.settings
+            .operation_constructor
+            .update_cache(&mut self.settings.cached_songs);
+
+        self.backend_handler = BackendHandler::load(None);
+
+        Cm::none()
     }
 
     pub fn prepare_to_save(&mut self) {}
 
+    pub fn subscription(&self) -> Subscription<YtmrsMsg> {
+        Subscription::batch([
+            self.tickers.subscription(),
+            keyboard::on_key_press(|_, m| Some(YtmrsMsg::ModifierChanged(m))),
+            keyboard::on_key_release(|_, m| Some(YtmrsMsg::ModifierChanged(m))),
+        ])
+    }
+
     pub fn view(&self, scheme: FullYtmrsScheme) -> Element<YtmrsMsg> {
         let input = self.inputs.view().map(YtmrsMsg::InputMessage);
+        let keys: HashSet<SongKey> = self.settings.queue.iter().cloned().collect();
+        let cached_map: HashMap<_, _> = self.settings.queue_cache.get(&keys).collect();
 
-        let songs = self.settings.queue.iter().map(|song| {
+        let backend_status: Element<YtmrsMsg> = self.backend_handler.view();
+
+        let songs = self.settings.queue.iter().enumerate().map(|(idx, key)| {
+            let selected = {
+                match &self.inputs.selection_mode {
+                    SelectionMode::None => false,
+                    SelectionMode::Single(idx_) => idx == *idx_,
+                    SelectionMode::Multiple(v) => v.contains(&idx),
+                    SelectionMode::Range { first: _, r } => r.contains(&idx),
+                }
+            };
+            let style = scheme.song_appearance.update(selected);
             droppable(
-                self.settings.saved_songs[song]
-                    .view(&scheme.song_appearance)
-                    .map(|msg| YtmrsMsg::SongMessage(song.clone(), msg)),
+                Container::new(match cached_map.get(key) {
+                    Some(songc) => {
+                        let song = songc.lock().unwrap();
+                        song.as_data().column::<YtmrsMsg>()
+                    }
+                    None => SongData::mystery().column::<YtmrsMsg>(),
+                })
+                .style(move |_| style),
             )
-            // .on_click(YtmrsMsg::SongClicked(song.clone()))
-            .on_drop(move |pt, rec| YtmrsMsg::Drop(song.clone(), pt, rec))
+            .on_drop(move |pt, rec| YtmrsMsg::Drop(key.clone(), pt, rec))
+            .on_single_click(YtmrsMsg::SongClicked(idx, key.clone()))
             .into()
         });
+
+        let song_list = scrollable(
+            Container::new(column(songs).width(Length::Fill))
+                .align_x(Horizontal::Left)
+                .width(Length::Fill)
+                .max_width(400)
+                .padding(0)
+                .align_x(Horizontal::Left),
+        )
+        .style(scheme.scrollable_style.clone().update());
 
         let constructor = scrollable(
             self.settings
                 .operation_constructor
-                .view(&self.settings.saved_songs, &scheme)
-                .map(YtmrsMsg::OpConstructorMsg),
+                .view(&scheme)
+                .map(YtmrsMsg::SongOpMsg),
         )
         .style(scheme.scrollable_style.clone().update())
         .width(Length::Fill);
@@ -206,18 +249,11 @@ impl Ytmrs {
             .width(Length::Fill)
             .id(CId::new("base_drop_target"));
 
-        let song_list = scrollable(
-            Container::new(column(songs))
-                .width(Length::Fill)
-                .max_width(400)
-                .padding(0)
-                .align_x(Horizontal::Left),
-        )
-        .style(scheme.scrollable_style.update());
+        let constructor_row = column![constructor, base_drop_target];
 
         column![
-            input,
-            row![song_list, column![constructor, base_drop_target]]
+            row![input, backend_status],
+            row![song_list, constructor_row]
         ]
         .align_items(Alignment::Center)
         .spacing(20)
@@ -226,47 +262,33 @@ impl Ytmrs {
     }
 
     pub fn update(&mut self, message: YtmrsMsg) -> Cm<YtmrsMsg> {
-        match message {
-            YtmrsMsg::SongMessage(key, msg) => self
-                .settings
-                .saved_songs
-                .get_mut(&key)
-                .unwrap()
-                .update(msg)
-                .map(move |msg| YtmrsMsg::SongMessage(key.clone(), msg)),
-            YtmrsMsg::SongClicked(key) => {
-                let song = self.settings.saved_songs.get_mut(&key).unwrap();
-                // Add song to queue
-                self.settings
-                    .operation_constructor
-                    .push(ConstructorItem::from(key.clone()));
+        let command = match message {
+            YtmrsMsg::SongClicked(clicked_idx, key) => {
+                println![
+                    "{:?} Pressed with modifiers {:?}",
+                    key, self.inputs.modifiers
+                ];
+                self.inputs.selection_mode = self
+                    .inputs
+                    .selection_mode
+                    .clone()
+                    .update_selection(clicked_idx, &self.inputs.modifiers);
+                println!["Selection: {:#?}", self.inputs.selection_mode];
 
-                Cm::batch([
-                    // Change background color to indicate the playing song
-                    match song.thumbnail.clone() {
-                        ThumbnailState::Unknown => Cm::none(),
-                        ThumbnailState::Downloaded { path, handle: _ } => {
-                            let handle = self.settings.index.get(&key);
-                            match &handle.get_color() {
-                                Some(col) => Cm::perform(
-                                    BasicYtmrsScheme::from_argb(color_to_argb(*col)),
-                                    |scheme| YtmrsMsg::SetNewBackground(key, scheme),
-                                ),
-                                None => Cm::perform(BasicYtmrsScheme::from_image(path), |scheme| {
-                                    YtmrsMsg::SetNewBackground(key, scheme)
-                                }),
-                            }
-                        }
-                    },
-                ])
+                Cm::none()
             }
-            YtmrsMsg::SetNewBackground(key, scheme) => {
-                // Save primary color to cache for future use
-                let mut handle = self.settings.index.get(&key);
-                if handle.get_color().is_none() {
-                    handle.set_color(scheme.primary_color);
-                    println!["Saved primary color: {:?}", scheme.primary_color];
-                }
+            YtmrsMsg::ModifierChanged(m) => {
+                self.inputs.modifiers = m;
+
+                Cm::none()
+            }
+            YtmrsMsg::SetNewBackground(_, _) => {
+                // // Save primary color to cache for future use
+                // let mut handle = self.settings.index.get(&key);
+                // if handle.get_color().is_none() {
+                //     handle.set_color(scheme.primary_color);
+                //     println!["Saved primary color: {:?}", scheme.primary_color];
+                // }
                 Cm::none()
             }
             YtmrsMsg::InputMessage(InputMessage::UrlSubmitted) => {
@@ -300,34 +322,44 @@ impl Ytmrs {
                 }
             },
             YtmrsMsg::RequestParsed(response_type) => match *response_type {
-                YTResponseType::Song(song) => {
+                YTResponseType::Song(_song) => {
                     println!["Request is a song"];
-                    let id = song.id.clone();
-                    self.add_ytsong(song)
-                        .map(move |msg| YtmrsMsg::SongMessage(id.clone(), msg))
+                    todo!()
                 }
                 YTResponseType::Tab(t) => {
                     println!["Request is a 'tab'"];
                     self.settings.queue.clear();
-
-                    Cm::batch(t.entries.iter().map(|entry| {
-                        let id = entry.id.clone();
-                        let song = YTSong {
+                    let songs: Vec<Song> = t
+                        .entries
+                        .iter()
+                        .map(|entry| Song {
                             id: entry.id.clone(),
                             title: entry.title.clone(),
-                            description: None,
                             channel: entry.channel.clone(),
                             view_count: entry.view_count,
                             thumbnail: entry.thumbnails[0].url.clone(),
-                            album: None,
                             webpage_url: entry.url.clone(),
                             duration: entry.duration,
                             artists: Some(vec![entry.channel.clone()]),
-                            tags: vec![],
-                        };
-                        self.add_ytsong(song)
-                            .map(move |msg| YtmrsMsg::SongMessage(id.clone(), msg))
-                    }))
+                            ..Default::default()
+                        })
+                        .collect();
+
+                    let keys: HashSet<_> = songs.iter().map(|s| &s.id).cloned().collect();
+                    self.settings.queue.clear();
+                    self.settings.queue.extend(keys.clone());
+
+                    Cm::perform(
+                        SongCache::extend(
+                            self.settings.cached_songs.filepath.clone(),
+                            songs.clone().into_iter(),
+                            true,
+                        ),
+                        move |s| match s {
+                            Ok(_) => YtmrsMsg::CachingSuccess(keys),
+                            Err(_) => YtmrsMsg::CachingFailure,
+                        },
+                    )
                 }
                 YTResponseType::Search(_s) => {
                     println!["Request is a search"];
@@ -338,10 +370,13 @@ impl Ytmrs {
                 println!["{:?}", e];
                 Cm::none()
             }
-            YtmrsMsg::OpConstructorMsg(msg) => {
+            YtmrsMsg::SongOpMsg(msg) => {
                 match self.settings.operation_constructor.update(msg) {
-                    UpdateResult::Cm(cm) => cm.map(YtmrsMsg::OpConstructorMsg),
-                    UpdateResult::SongClicked(wid) => todo!(),
+                    UpdateResult::Cm(cm) => cm.map(YtmrsMsg::SongOpMsg),
+                    UpdateResult::SongClicked(wid) => {
+                        self.song_clicked(wid);
+                        Cm::none()
+                    }
                     UpdateResult::Move(from, to) => {
                         // Remove item at `from` and place it to `to`
                         let from_path = self.settings.operation_constructor.path_to_id(&from);
@@ -355,7 +390,7 @@ impl Ytmrs {
                         let item = self
                             .settings
                             .operation_constructor
-                            .pop_path(from_path.into());
+                            .pop_path(from_path.clone().into());
                         if item.is_none() {
                             return Cm::none();
                         }
@@ -363,7 +398,35 @@ impl Ytmrs {
 
                         self.settings
                             .operation_constructor
-                            .push_to_path(to_path.into(), item);
+                            .push_to_path(to_path.clone().into(), item);
+
+                        let mut parent_path = to_path.clone();
+                        parent_path.pop();
+
+                        let item_at_id: Option<&mut SongOpConstructor> = if parent_path.is_empty() {
+                            Some(&mut self.settings.operation_constructor)
+                        } else {
+                            let item_at_id = self
+                                .settings
+                                .operation_constructor
+                                .item_at_path_mut(parent_path.into());
+
+                            match item_at_id {
+                                Some(item) => match item {
+                                    ConstructorItem::Song(_, _) => None,
+                                    ConstructorItem::Operation(opc) => Some(opc),
+                                },
+                                None => None,
+                            }
+                        };
+
+                        if let Some(parent) = item_at_id {
+                            parent.update_cache(&mut self.settings.cached_songs);
+                        } else {
+                            self.settings
+                                .operation_constructor
+                                .update_cache(&mut self.settings.cached_songs);
+                        }
 
                         Cm::none()
                     }
@@ -393,27 +456,108 @@ impl Ytmrs {
                     top.push_to_path(VecDeque::from(path), item);
                 } else if let Some((id, _)) = zones.last() {
                     if *id == WId::new("base_drop_target") {
-                        top.push_to_path(VecDeque::new(), song_key.into())
+                        top.push_to_path(VecDeque::new(), song_key.into());
+                        self.settings
+                            .operation_constructor
+                            .update_cache(&mut self.settings.cached_songs);
                     }
                 }
+                self.settings
+                    .operation_constructor
+                    .update_cache(&mut self.settings.cached_songs);
 
                 Cm::none()
             }
-        }
+            YtmrsMsg::CachingSuccess(keys) => {
+                println!["Caching success!"];
+                let new_songs = self.settings.cached_songs.fetch(&keys);
+                self.settings.queue_cache.extend(new_songs);
+                Cm::none()
+            }
+            YtmrsMsg::CachingFailure => {
+                println!["Caching failure!"];
+                Cm::none()
+            }
+            YtmrsMsg::CacheTick => {
+                self.clean_cache();
+                Cm::none()
+            }
+            YtmrsMsg::BackendStatusTick => {
+                self.backend_handler.poll();
+                Cm::none()
+            }
+            YtmrsMsg::BackendStatusPollSuccess => Cm::none(),
+            YtmrsMsg::BackendStatusPollFailure(e) => {
+                println!["Polling failure: {:?}", e];
+                self.backend_handler.status = BackendLaunchStatus::Unknown;
+                todo!()
+            }
+            YtmrsMsg::PlayingStatusTick => todo!(),
+        };
+        command
     }
 
-    pub fn add_ytsong(&mut self, song: YTSong) -> Cm<SongMessage> {
-        let s = Song::new(song.clone());
-        let id = s.data.id.clone();
-        if !self.settings.saved_songs.contains_key(&id) {
-            self.settings.saved_songs.insert(id.clone(), s);
+    fn song_clicked(&mut self, wid: WId) {
+        let path = self
+            .settings
+            .operation_constructor
+            .path_to_id(&wid)
+            .unwrap();
+
+        println!["Given path: {:?}", path];
+        let song_op = self.settings.operation_constructor.build();
+        let tracker = SongOpTracker::from_song_op(&song_op, path.into());
+        println!["SongOPTracker: {:?}", tracker];
+        let generated_path: VecDeque<usize> = tracker.get_current().collect();
+        println!["Generated path: {:?}", generated_path];
+        let item = self
+            .settings
+            .operation_constructor
+            .item_at_path(generated_path.clone());
+        println!["Estimated item at path: {:?}", item];
+        println!["Infinite loop type: {:?}", song_op.loop_type()];
+        println!["Is valid: {:?}", song_op.is_valid()];
+    }
+
+    fn clean_cache(&mut self) {
+        println!["CACHE TICK:"];
+        let statistics = {
+            let queue: HashSet<String> = self.settings.queue.iter().cloned().collect();
+            let qarcs: HashSet<String> = self.settings.queue_cache.get_keys().clone();
+            let queue_count = queue.len();
+            let qarcs_count = qarcs.len();
+            let deleted_count = if queue != qarcs {
+                let used_arcs: HashSet<String> = qarcs.intersection(&queue).cloned().collect();
+
+                self.settings
+                    .queue_cache
+                    .replace(self.settings.queue_cache.get(&used_arcs).collect());
+                qarcs_count - used_arcs.len()
+            } else {
+                0
+            };
+
+            (queue_count, qarcs_count, deleted_count)
+        };
+        println![
+            "   {:?} songs in the queue\n   {:?} songs in arcs\n   {:?} unused arcs deleted",
+            statistics.0, statistics.1, statistics.2
+        ];
+
+        {
+            let opcache = self.settings.operation_constructor.cache_size();
+            self.settings
+                .operation_constructor
+                .update_cache(&mut self.settings.cached_songs);
+            let new_opcache = self.settings.operation_constructor.cache_size();
+            let diff = new_opcache as isize - opcache as isize;
+            println!["   {:?} arcs changed in constructor", diff];
         }
-        self.settings.queue.push(id.clone());
-        self.settings
-            .saved_songs
-            .get(&id)
-            .unwrap()
-            .load(&mut self.settings.index.get(&id))
+
+        let unused: Vec<String> = self.settings.cached_songs.find_unused_songs().collect();
+        let unused_count = unused.len();
+        self.settings.cached_songs.drop_from_cache(unused);
+        println!["   {:?} songs dropped from cache", unused_count];
     }
 
     async fn parse_request(response: String) -> Result<YTResponseType, YTResponseError> {
