@@ -5,7 +5,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::settings::project_directory;
 use async_std::prelude::*;
 use serde::{Deserialize, Serialize};
 

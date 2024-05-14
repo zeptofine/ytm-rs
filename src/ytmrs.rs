@@ -20,6 +20,7 @@ use iced_drop::{droppable, zones_on_point};
 use reqwest::Url;
 
 use crate::{
+    audio::YTMRSAudioManager,
     backend_handler::{BackendHandler, BackendLaunchStatus, RequestResult},
     caching::{FileCache, FilePathPair},
     response_types::{YTResponseError, YTResponseType},
@@ -97,7 +98,7 @@ impl Default for YtmrsCache {
 #[derive(Debug, Default)]
 pub struct Ytmrs {
     inputs: UserInputs,
-    // audio_manager: YTMRSAudioManager,
+    audio_manager: YTMRSAudioManager,
     tickers: Tickers,
     backend_handler: BackendHandler,
     pub settings: YTMRSettings,
