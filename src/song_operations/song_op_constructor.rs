@@ -273,15 +273,7 @@ impl SongOpConstructor {
         }
     }
 
-    /// Returns all the song keys of this [`SongOpConstructor`].
-    pub fn all_song_keys(&self) -> impl Iterator<Item = &SongKey> {
-        self.list.iter().filter_map(|item| match item {
-            ConstructorItem::Song(key, _) => Some(key),
-            ConstructorItem::Operation(_) => None,
-        })
-    }
-
-    // Same as all_song_keys but recursive
+    /// Returns all the song keys found in this constructor recursively
     pub fn all_song_keys_rec(&self) -> impl Iterator<Item = &SongKey> {
         self.list.iter().flat_map(|item| item.all_song_keys())
     }
@@ -373,7 +365,7 @@ impl SongOpConstructor {
                 let wid = WId::from(sid.0.clone());
                 container(
                     row![
-                        droppable(data.column())
+                        droppable(data.row())
                             .drag_mode(false, true)
                             .drag_hide(true)
                             .on_single_click(SongOpMessage::SongClicked(wid.clone()))

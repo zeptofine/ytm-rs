@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 
 use serde::{Deserialize, Serialize};
@@ -39,13 +37,6 @@ pub struct Song {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
     pub tags: Vec<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub thumbnail_path: Option<PathBuf>,
-    #[serde(skip)]
-    pub thumbnail_handle: Option<iced_image::Handle>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub song_path: Option<PathBuf>,
 }
 
 impl Song {
@@ -74,7 +65,6 @@ impl Song {
                 .cycle()
                 .take(thread_rng().gen_range(0..=5))
                 .collect(),
-            ..Default::default()
         }
     }
 
@@ -84,12 +74,12 @@ impl Song {
             channel: self.channel.clone(),
             artists: self.artists.clone(),
             duration: self.duration,
-            handle: self.thumbnail_handle.clone(),
+            handle: None,
         }
     }
 }
 impl IDed for Song {
-    fn get_id(&self) -> &str {
+    fn id(&self) -> &str {
         &self.id
     }
 }
@@ -112,6 +102,10 @@ impl SongData {
         }
     }
 
+    pub fn with_handle(&mut self, handle: iced_image::Handle) {
+        self.handle = Some(handle);
+    }
+
     fn format_duration(&self) -> String {
         let minutes = self.duration / 60.0;
         let hours = minutes / 60.0;
@@ -129,10 +123,6 @@ impl SongData {
         }
     }
 
-    pub fn image(&self, x: u16, y: u16) -> Option<Image<iced_image::Handle>> {
-        Self::img(self.handle.clone(), x, y)
-    }
-
     fn img(h: Option<iced_image::Handle>, x: u16, y: u16) -> Option<Image<iced_image::Handle>> {
         h.map(|h| {
             Image::new(h)
@@ -142,7 +132,7 @@ impl SongData {
         })
     }
 
-    pub fn column<'a, M: 'a>(self) -> Row<'a, M, iced::Theme, iced::Renderer> {
+    pub fn row<'a, M: 'a>(self) -> Row<'a, M, iced::Theme, iced::Renderer> {
         let mut r = row![];
         r = r.push_maybe(Self::img(self.handle.clone(), 50, 50));
         r = r.push(

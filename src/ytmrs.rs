@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fmt::Debug,
+    path::PathBuf,
     time,
 };
 
@@ -16,13 +17,13 @@ use iced::{
     Alignment, Command as Cm, Element, Length, Subscription,
 };
 use iced_drop::{droppable, zones_on_point};
-use reqwest::{Client, Url};
+use reqwest::Url;
 
 use crate::{
     backend_handler::{BackendHandler, BackendLaunchStatus, RequestResult},
-    caching::FileCache,
+    caching::{FileCache, FilePathPair},
     response_types::{YTResponseError, YTResponseType},
-    settings::{SongKey, YTMRSettings},
+    settings::{project_directory, SongKey, YTMRSettings},
     song::{Song, SongData},
     song_operations::{
         ConstructorItem, OperationTracker, SongOpConstructor, SongOpMessage, SongOpTracker,
@@ -67,6 +68,32 @@ impl Tickers {
     }
 }
 
+fn songs_path() -> PathBuf {
+    let mut path = project_directory();
+    path.push("songs.ndjson");
+    path
+}
+
+fn file_paths_path() -> PathBuf {
+    let mut path = project_directory();
+    path.push("filepaths.ndjson");
+    path
+}
+
+#[derive(Debug)]
+pub struct YtmrsCache {
+    pub songs: FileCache<Song>,
+    pub file_paths: FileCache<FilePathPair>,
+}
+impl Default for YtmrsCache {
+    fn default() -> Self {
+        Self {
+            songs: FileCache::new(songs_path()),
+            file_paths: FileCache::new(file_paths_path()),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Ytmrs {
     inputs: UserInputs,
@@ -74,6 +101,8 @@ pub struct Ytmrs {
     tickers: Tickers,
     backend_handler: BackendHandler,
     pub settings: YTMRSettings,
+
+    cache: YtmrsCache,
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +117,7 @@ pub enum YtmrsMsg {
 
     PlayingStatusTick,
 
+    SongSimpleClicked(usize),
     SongClicked(usize, String),
     InputMessage(InputMessage),
 
@@ -115,15 +145,15 @@ impl Ytmrs {
 
     pub fn load(&mut self) -> Cm<YtmrsMsg> {
         let arcs = self
-            .settings
-            .cached_songs
+            .cache
+            .songs
             .fetch(&self.settings.queue.iter().cloned().collect());
 
         self.settings.queue_cache.extend(arcs);
 
         self.settings
             .operation_constructor
-            .update_cache(&mut self.settings.cached_songs);
+            .update_cache(&mut self.cache.songs);
 
         self.backend_handler = BackendHandler::load(None);
 
@@ -148,26 +178,20 @@ impl Ytmrs {
         let backend_status: Element<YtmrsMsg> = self.backend_handler.view();
 
         let songs = self.settings.queue.iter().enumerate().map(|(idx, key)| {
-            let selected = {
-                match &self.inputs.selection_mode {
-                    SelectionMode::None => false,
-                    SelectionMode::Single(idx_) => idx == *idx_,
-                    SelectionMode::Multiple(v) => v.contains(&idx),
-                    SelectionMode::Range { first: _, r } => r.contains(&idx),
-                }
-            };
+            let selected = self.inputs.selection_mode.contains(idx);
             let style = scheme.song_appearance.update(selected);
             droppable(
                 Container::new(match cached_map.get(key) {
                     Some(songc) => {
                         let song = songc.lock().unwrap();
-                        song.as_data().column::<YtmrsMsg>()
+                        song.as_data().row::<YtmrsMsg>()
                     }
-                    None => SongData::mystery().column::<YtmrsMsg>(),
+                    None => SongData::mystery().row::<YtmrsMsg>(),
                 })
                 .style(move |_| style),
             )
             .on_drop(move |pt, rec| YtmrsMsg::Drop(key.clone(), pt, rec))
+            .on_click(YtmrsMsg::SongSimpleClicked(idx))
             .on_single_click(YtmrsMsg::SongClicked(idx, key.clone()))
             .into()
         });
@@ -210,6 +234,12 @@ impl Ytmrs {
 
     pub fn update(&mut self, message: YtmrsMsg) -> Cm<YtmrsMsg> {
         let command = match message {
+            YtmrsMsg::SongSimpleClicked(idx) => {
+                if let SelectionMode::None = self.inputs.selection_mode {
+                    self.inputs.selection_mode = SelectionMode::Single(idx);
+                }
+                Cm::none()
+            }
             YtmrsMsg::SongClicked(clicked_idx, key) => {
                 println![
                     "{:?} Pressed with modifiers {:?}",
@@ -302,7 +332,7 @@ impl Ytmrs {
 
                     Cm::perform(
                         FileCache::extend(
-                            self.settings.cached_songs.filepath.clone(),
+                            self.cache.songs.filepath.clone(),
                             songs.clone().into_iter(),
                             true,
                         ),
@@ -338,46 +368,7 @@ impl Ytmrs {
                         let from_path = from_path.unwrap();
                         let to_path = to_path.unwrap();
 
-                        let item = self
-                            .settings
-                            .operation_constructor
-                            .pop_path(from_path.clone().into());
-                        if item.is_none() {
-                            return Cm::none();
-                        }
-                        let item = item.unwrap();
-
-                        self.settings
-                            .operation_constructor
-                            .push_to_path(to_path.clone().into(), item);
-
-                        let mut parent_path = to_path.clone();
-                        parent_path.pop();
-
-                        let item_at_id: Option<&mut SongOpConstructor> = if parent_path.is_empty() {
-                            Some(&mut self.settings.operation_constructor)
-                        } else {
-                            let item_at_id = self
-                                .settings
-                                .operation_constructor
-                                .item_at_path_mut(parent_path.into());
-
-                            match item_at_id {
-                                Some(item) => match item {
-                                    ConstructorItem::Song(_, _) => None,
-                                    ConstructorItem::Operation(opc) => Some(opc),
-                                },
-                                None => None,
-                            }
-                        };
-
-                        if let Some(parent) = item_at_id {
-                            parent.update_cache(&mut self.settings.cached_songs);
-                        } else {
-                            self.settings
-                                .operation_constructor
-                                .update_cache(&mut self.settings.cached_songs);
-                        }
+                        self.so_move(from_path, to_path);
 
                         Cm::none()
                     }
@@ -403,25 +394,65 @@ impl Ytmrs {
 
                     let path = top.path_to_id(id).unwrap();
                     println!["{:?}", path];
-                    let item: ConstructorItem = song_key.into();
-                    top.push_to_path(VecDeque::from(path), item);
+                    match &self.inputs.selection_mode {
+                        SelectionMode::None => {}
+                        SelectionMode::Single(_) => {
+                            let item: ConstructorItem = song_key.into();
+                            top.push_to_path(VecDeque::from(path), item);
+                        }
+                        SelectionMode::Multiple(v) => {
+                            let mut v = v.clone();
+                            v.sort();
+                            let items = v.iter().filter_map(|idx| {
+                                self.settings
+                                    .queue
+                                    .get(*idx)
+                                    .map(|k| ConstructorItem::from(k.clone()))
+                            });
+                            let mut pth = path.clone();
+                            let mut start = pth.pop().unwrap_or(0);
+                            for item in items {
+                                pth.push(start);
+                                top.push_to_path(VecDeque::from(pth.clone()), item);
+                                pth.pop();
+                                start += 1;
+                            }
+                        }
+
+                        SelectionMode::Range { first: _, r } => {
+                            let items = r.clone().filter_map(|idx| {
+                                self.settings
+                                    .queue
+                                    .get(idx)
+                                    .map(|k| ConstructorItem::from(k.clone()))
+                            });
+                            let mut pth = path.clone();
+                            let mut start = pth.pop().unwrap_or(0);
+                            for item in items {
+                                pth.push(start);
+                                top.push_to_path(VecDeque::from(pth.clone()), item);
+                                pth.pop();
+                                start += 1;
+                            }
+                        }
+                    }
                 } else if let Some((id, _)) = zones.last() {
                     if *id == WId::new("base_drop_target") {
                         top.push_to_path(VecDeque::new(), song_key.into());
                         self.settings
                             .operation_constructor
-                            .update_cache(&mut self.settings.cached_songs);
+                            .update_cache(&mut self.cache.songs);
                     }
                 }
                 self.settings
                     .operation_constructor
-                    .update_cache(&mut self.settings.cached_songs);
+                    .update_cache(&mut self.cache.songs);
 
                 Cm::none()
             }
             YtmrsMsg::CachingSuccess(keys) => {
                 println!["Caching success!"];
-                let new_songs = self.settings.cached_songs.fetch(&keys);
+                let new_songs = self.cache.songs.fetch(&keys);
                 self.settings.queue_cache.extend(new_songs);
                 Cm::none()
             }
@@ -448,6 +479,50 @@ impl Ytmrs {
         command
     }
 
+    /// Moves an item in the constructor from one position to another
+    fn so_move(&mut self, from: Vec<usize>, to: Vec<usize>) {
+        let item = self
+            .settings
+            .operation_constructor
+            .pop_path(from.clone().into());
+        if item.is_none() {
+            return;
+        }
+        let item = item.unwrap();
+
+        self.settings
+            .operation_constructor
+            .push_to_path(to.clone().into(), item);
+        let mut parent_path = to.clone();
+        parent_path.pop();
+
+        let item_at_id: Option<&mut SongOpConstructor> = if parent_path.is_empty() {
+            Some(&mut self.settings.operation_constructor)
+        } else {
+            let item_at_id = self
+                .settings
+                .operation_constructor
+                .item_at_path_mut(parent_path.into());
+
+            match item_at_id {
+                Some(item) => match item {
+                    ConstructorItem::Song(_, _) => None,
+                    ConstructorItem::Operation(opc) => Some(opc),
+                },
+                None => None,
+            }
+        };
+
+        if let Some(parent) = item_at_id {
+            parent.update_cache(&mut self.cache.songs);
+        } else {
+            self.settings
+                .operation_constructor
+                .update_cache(&mut self.cache.songs);
+        }
+    }
+
+    /// Generate the song tracker when a song is clicked
     fn song_clicked(&mut self, wid: WId) {
         let path = self
             .settings
@@ -470,6 +545,7 @@ impl Ytmrs {
         println!["Is valid: {:?}", song_op.is_valid()];
     }
 
+    /// Cache cleanup every fer seconds
     fn clean_cache(&mut self) {
         println!["CACHE TICK:"];
         let statistics = {
@@ -499,19 +575,19 @@ impl Ytmrs {
             let opcache = self.settings.operation_constructor.cache_size();
             self.settings
                 .operation_constructor
-                .update_cache(&mut self.settings.cached_songs);
+                .update_cache(&mut self.cache.songs);
             let new_opcache = self.settings.operation_constructor.cache_size();
             let diff = new_opcache as isize - opcache as isize;
             println!["   {:?} arcs changed in constructor", diff];
         }
 
-        let unused: Vec<String> = self.settings.cached_songs.find_unused_itmes().collect();
+        let unused: Vec<String> = self.cache.songs.find_unused_itmes().collect();
         let unused_count = unused.len();
-        self.settings.cached_songs.drop_from_cache(unused);
+        self.cache.songs.drop_from_cache(unused);
         println!["   {:?} songs dropped from cache", unused_count];
         println![
             "   {:?} songs currently in cache",
-            self.settings.cached_songs.cache_size()
+            self.cache.songs.cache_size()
         ]
     }
 

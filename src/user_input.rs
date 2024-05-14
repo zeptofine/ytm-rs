@@ -94,6 +94,15 @@ impl SelectionMode {
             Self::Single(clicked_idx)
         }
     }
+
+    pub fn contains(&self, idx: usize) -> bool {
+        match self {
+            Self::None => false,
+            Self::Single(sidx) => *sidx == idx,
+            Self::Multiple(v) => v.contains(&idx),
+            Self::Range { first: _, r } => r.contains(&idx),
+        }
+    }
 }
 
 #[derive(Debug, Default)]

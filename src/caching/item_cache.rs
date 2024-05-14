@@ -9,12 +9,6 @@ use crate::settings::project_directory;
 use async_std::prelude::*;
 use serde::{Deserialize, Serialize};
 
-fn _songs_path() -> PathBuf {
-    let mut path = project_directory();
-    path.push("songs.ndjson");
-    path
-}
-
 #[derive(Debug, Clone)]
 pub struct LineItemPair<T>(
     pub String, // line
@@ -22,7 +16,7 @@ pub struct LineItemPair<T>(
 );
 
 pub trait IDed {
-    fn get_id(&self) -> &str;
+    fn id(&self) -> &str;
 }
 
 pub type CacheMap<T> = HashMap<String, Arc<Mutex<T>>>;
@@ -35,20 +29,18 @@ pub struct FileCache<T: Serialize + for<'de> Deserialize<'de> + IDed> {
 }
 
 pub fn to_hash_map<T: IDed>(items: impl Iterator<Item = T>) -> HashMap<String, T> {
-    items.map(|s| (s.get_id().to_string(), s)).collect()
-}
-
-impl<T: Serialize + for<'de> Deserialize<'de> + IDed> Default for FileCache<T> {
-    fn default() -> Self {
-        Self {
-            map: Default::default(),
-            lock: Default::default(),
-            filepath: _songs_path(),
-        }
-    }
+    items.map(|s| (s.id().to_string(), s)).collect()
 }
 
 impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
+    pub fn new(filepath: PathBuf) -> Self {
+        Self {
+            filepath,
+            map: Default::default(),
+            lock: Default::default(),
+        }
+    }
+
     /// Filters out the items that have only one refcount,
     /// meaning they are no longer being used by anything other than the map
     pub fn find_unused_itmes(&self) -> impl Iterator<Item = String> + '_ {
@@ -126,7 +118,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
                     Self::read_items_from_ndjson(&self.filepath)
                         .unwrap()
                         .filter_map(move |LineItemPair(_, item)| {
-                            let id = item.get_id().to_string();
+                            let id = item.id().to_string();
 
                             let contains = ids.contains(&id);
                             contains.then(|| (id, Arc::new(Mutex::new(item))))
@@ -152,6 +144,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
     }
 
     /// Extends the cache with new items. This is different from extend() in that this uses the map's filelock and precaches the new items.
+    #[allow(unused)]
     pub async fn extend_file(
         &mut self,
         items: impl Iterator<Item = T>,
@@ -253,7 +246,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
     ) -> impl Iterator<Item = Vec<u8>> + 'a {
         items.filter_map(move |LineItemPair(mut line, item)| {
             line.push('\n');
-            let id = item.get_id();
+            let id = item.id();
             match (overwrite, filter.contains_key(id)) {
                 (true, true) => None,
                 (true, false) => Some(line.as_bytes().to_vec()),
@@ -286,15 +279,6 @@ impl<T: IDed + ?Sized> CacheInterface<T> {
         let new_keys: HashSet<String> = items.keys().cloned().collect();
         self.keys = self.keys.union(&new_keys).cloned().collect();
         self.cache.extend(items)
-    }
-
-    pub fn pop(&mut self, itemlist: impl IntoIterator<Item = String>) -> CacheMap<T> {
-        let new_cache: CacheMap<_> = itemlist
-            .into_iter()
-            .filter_map(|k| self.cache.remove_entry(&k))
-            .collect();
-        self.keys = new_cache.keys().cloned().collect();
-        new_cache
     }
 
     pub fn replace(&mut self, cache: CacheMap<T>) {
@@ -349,7 +333,7 @@ mod tests {
         let mut sc = FileCache {
             lock: TESTING_LOCK.clone(),
             filepath: tmpfile,
-            ..Default::default()
+            map: Default::default(),
         };
 
         let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -377,7 +361,7 @@ mod tests {
         let mut sc = FileCache {
             lock: TESTING_LOCK.clone(),
             filepath: tmpfile,
-            ..Default::default()
+            map: Default::default(),
         };
 
         let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -415,7 +399,7 @@ mod tests {
         let mut sc = FileCache {
             lock: TESTING_LOCK.clone(),
             filepath: tmpfile,
-            ..Default::default()
+            map: Default::default(),
         };
 
         let runtime = tokio::runtime::Runtime::new().unwrap();
