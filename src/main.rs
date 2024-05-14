@@ -14,10 +14,11 @@ use iced::{
 
 mod audio;
 mod backend_handler;
+mod caching;
 mod response_types;
 mod settings;
+mod playlist;
 mod song;
-mod song_cache;
 mod song_list;
 mod song_operations;
 mod styling;

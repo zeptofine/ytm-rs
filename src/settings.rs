@@ -4,7 +4,8 @@ use async_std::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    song_cache::{CacheInterface, SongCache},
+    caching::{CacheInterface, FileCache},
+    song::Song,
     song_operations::SongOpConstructor,
 };
 
@@ -38,11 +39,11 @@ impl Default for YTMRUserSettings {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct YTMRSettings {
     #[serde(skip)]
-    pub cached_songs: SongCache,
+    pub cached_songs: FileCache<Song>,
     // todo: combine queue and queue_arcs
     pub queue: Vec<SongKey>,
     #[serde(skip)]
-    pub queue_cache: CacheInterface,
+    pub queue_cache: CacheInterface<Song>,
     pub operation_constructor: SongOpConstructor,
     pub user_settings: YTMRUserSettings,
 }

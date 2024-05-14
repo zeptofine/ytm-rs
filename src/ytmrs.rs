@@ -1,12 +1,11 @@
 use std::{
-    cmp::Ordering,
     collections::{HashMap, HashSet, VecDeque},
     fmt::Debug,
     time,
 };
 
 use iced::{
-    advanced::{widget::Id as WId, Widget},
+    advanced::widget::Id as WId,
     alignment::Horizontal,
     keyboard,
     widget::{
@@ -17,16 +16,14 @@ use iced::{
     Alignment, Command as Cm, Element, Length, Subscription,
 };
 use iced_drop::{droppable, zones_on_point};
-use once_cell::sync::Lazy;
 use reqwest::{Client, Url};
-use serde::Serialize;
 
 use crate::{
-    backend_handler::{BackendHandler, BackendLaunchStatus},
+    backend_handler::{BackendHandler, BackendLaunchStatus, RequestResult},
+    caching::FileCache,
     response_types::{YTResponseError, YTResponseType},
     settings::{SongKey, YTMRSettings},
     song::{Song, SongData},
-    song_cache::SongCache,
     song_operations::{
         ConstructorItem, OperationTracker, SongOpConstructor, SongOpMessage, SongOpTracker,
         TreeDirected, UpdateResult,
@@ -106,56 +103,6 @@ pub enum YtmrsMsg {
     SongOpMsg(SongOpMessage),
 
     ModifierChanged(keyboard::Modifiers),
-}
-
-#[derive(Debug, Clone)]
-pub enum RequestResult {
-    Success(String),
-    RequestError,
-    JsonParseError,
-}
-
-async fn request_info(url: String) -> RequestResult {
-    println!["Requesting info for {}", url];
-    let client = Client::new();
-
-    match client
-        .post("http://127.0.0.1:55001/request_info")
-        .json(&RequestInfoDict {
-            url,
-            process: false,
-        })
-        .send()
-        .await
-    {
-        Err(e) => {
-            println!["{e:?}"];
-            RequestResult::RequestError
-        }
-        Ok(r) => match r.text().await {
-            Err(_) => RequestResult::JsonParseError,
-            Ok(j) => RequestResult::Success(j),
-        },
-    }
-}
-
-async fn request_search(query: String) -> RequestResult {
-    let mut url = Url::parse("http://localhost:55001/search").unwrap();
-    url.query_pairs_mut().append_pair("q", &query);
-    println!["{}", url];
-
-    let client = Client::new();
-
-    match client.get(url).send().await {
-        Err(e) => {
-            println!["{e:?}"];
-            RequestResult::RequestError
-        }
-        Ok(r) => match r.text().await {
-            Err(_) => RequestResult::JsonParseError,
-            Ok(j) => RequestResult::Success(j),
-        },
-    }
 }
 
 impl Ytmrs {
@@ -295,14 +242,18 @@ impl Ytmrs {
                 // Check if URL is valid
                 match Url::parse(&self.inputs.url) {
                     Ok(_) => Cm::perform(
-                        request_info(self.inputs.url.clone()),
+                        self.backend_handler
+                            .request_info(self.inputs.url.clone())
+                            .unwrap(),
                         YtmrsMsg::RequestRecieved,
                     ),
                     // URL failed to parse, try to search Youtube
                     Err(e) => {
                         println!["Failed to parse: \"{}\". assuming it's a search query", e];
                         Cm::perform(
-                            request_search(self.inputs.url.clone()),
+                            self.backend_handler
+                                .request_search(self.inputs.url.clone())
+                                .unwrap(),
                             YtmrsMsg::RequestRecieved,
                         )
                     }
@@ -350,7 +301,7 @@ impl Ytmrs {
                     self.settings.queue.extend(keys.clone());
 
                     Cm::perform(
-                        SongCache::extend(
+                        FileCache::extend(
                             self.settings.cached_songs.filepath.clone(),
                             songs.clone().into_iter(),
                             true,
@@ -554,19 +505,17 @@ impl Ytmrs {
             println!["   {:?} arcs changed in constructor", diff];
         }
 
-        let unused: Vec<String> = self.settings.cached_songs.find_unused_songs().collect();
+        let unused: Vec<String> = self.settings.cached_songs.find_unused_itmes().collect();
         let unused_count = unused.len();
         self.settings.cached_songs.drop_from_cache(unused);
         println!["   {:?} songs dropped from cache", unused_count];
+        println![
+            "   {:?} songs currently in cache",
+            self.settings.cached_songs.cache_size()
+        ]
     }
 
     async fn parse_request(response: String) -> Result<YTResponseType, YTResponseError> {
         YTResponseType::new(response)
     }
-}
-
-#[derive(Serialize)]
-struct RequestInfoDict {
-    url: String,
-    process: bool,
 }

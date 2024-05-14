@@ -5,12 +5,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::settings::project_directory;
 use async_std::prelude::*;
-
-use crate::{
-    settings::{project_directory, SongKey},
-    song::{to_hash_map, Song},
-};
+use serde::{Deserialize, Serialize};
 
 fn _songs_path() -> PathBuf {
     let mut path = project_directory();
@@ -19,18 +16,29 @@ fn _songs_path() -> PathBuf {
 }
 
 #[derive(Debug, Clone)]
-pub struct LineSongPair(pub String, pub Song);
+pub struct LineItemPair<T>(
+    pub String, // line
+    pub T,      // item generated from line
+);
 
-pub type SongCacheMap = HashMap<SongKey, Arc<Mutex<Song>>>;
+pub trait IDed {
+    fn get_id(&self) -> &str;
+}
+
+pub type CacheMap<T> = HashMap<String, Arc<Mutex<T>>>;
 
 #[derive(Debug, Clone)]
-pub struct SongCache {
-    map: SongCacheMap,
+pub struct FileCache<T: Serialize + for<'de> Deserialize<'de> + IDed> {
+    map: CacheMap<T>,
     lock: Arc<Mutex<()>>,
     pub filepath: PathBuf,
 }
 
-impl Default for SongCache {
+pub fn to_hash_map<T: IDed>(items: impl Iterator<Item = T>) -> HashMap<String, T> {
+    items.map(|s| (s.get_id().to_string(), s)).collect()
+}
+
+impl<T: Serialize + for<'de> Deserialize<'de> + IDed> Default for FileCache<T> {
     fn default() -> Self {
         Self {
             map: Default::default(),
@@ -40,10 +48,10 @@ impl Default for SongCache {
     }
 }
 
-impl SongCache {
-    /// Filters out the songs in saved_songs that have only one refcount,
+impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
+    /// Filters out the items that have only one refcount,
     /// meaning they are no longer being used by anything other than the map
-    pub fn find_unused_songs(&self) -> impl Iterator<Item = String> + '_ {
+    pub fn find_unused_itmes(&self) -> impl Iterator<Item = String> + '_ {
         self.map.iter().filter_map(|(key, s)| {
             let count = Arc::strong_count(s);
             match count == 1 {
@@ -59,20 +67,20 @@ impl SongCache {
         });
     }
 
-    pub fn fetch(&mut self, songids: &HashSet<SongKey>) -> SongCacheMap {
-        let cs_keys: HashSet<SongKey> = self.map.keys().cloned().collect();
+    pub fn fetch(&mut self, ids: &HashSet<String>) -> CacheMap<T> {
+        let cs_keys: HashSet<String> = self.map.keys().cloned().collect();
 
         match cs_keys.is_empty() {
-            true => self.cache_from_ndjson(songids).collect(),
+            true => self.cache_from_ndjson(ids).collect(),
             false => {
-                let already_cached = songids.intersection(&cs_keys);
-                let not_cached: HashSet<_> = songids.difference(&cs_keys).cloned().collect();
+                let already_cached = ids.intersection(&cs_keys);
+                let not_cached: HashSet<_> = ids.difference(&cs_keys).cloned().collect();
 
                 // chain caches from ndjson if not_cached is not empty
                 let get_cache = (!not_cached.is_empty())
                     .then(|| {
                         self.cache_from_ndjson(&not_cached)
-                            .collect::<Vec<(String, Arc<Mutex<Song>>)>>()
+                            .collect::<Vec<(String, Arc<Mutex<T>>)>>()
                     })
                     .into_iter()
                     .flatten();
@@ -85,86 +93,91 @@ impl SongCache {
         }
     }
 
-    /// Creates an iterator from reading the ndjson file and creating songs.
-    /// The iterator yields a tuple of the original line and the created song
-    pub fn read_songs_from_ndjson(
+    /// Creates an iterator from reading the ndjson file and creating items.
+    /// The iterator yields a tuple of the original line and the created item
+    pub fn read_items_from_ndjson(
         pth: impl AsRef<Path>,
-    ) -> Result<impl Iterator<Item = LineSongPair>, std::io::Error> {
+    ) -> Result<impl Iterator<Item = LineItemPair<T>>, std::io::Error> {
         println!["Reading from ndjson"];
         let pth = pth.as_ref();
+
         std::fs::File::open(pth).map(|file| {
             std::io::BufReader::new(file)
                 .lines()
                 // Filter to lines that successfully read
                 .map_while(Result::ok)
-                // Filter to lines that are valid songs
+                // Filter to lines that are valid <T>s
                 .filter_map(|l| {
-                    serde_json::from_str::<Song>(&l)
+                    serde_json::from_str::<T>(&l)
                         .ok()
-                        .map(|s| LineSongPair(l, s))
+                        .map(|s| LineItemPair(l, s))
                 })
         })
     }
 
     fn cache_from_ndjson(
         &mut self,
-        songids: &HashSet<SongKey>,
-    ) -> impl Iterator<Item = (String, Arc<Mutex<Song>>)> + '_ {
-        (!songids.is_empty())
+        ids: &HashSet<String>,
+    ) -> impl Iterator<Item = (String, Arc<Mutex<T>>)> + '_ {
+        (!ids.is_empty())
             .then(|| {
-                let songs: Vec<_> = {
+                let items: Vec<_> = {
                     let _lock = self.lock.lock().unwrap();
-                    Self::read_songs_from_ndjson(&self.filepath)
+                    Self::read_items_from_ndjson(&self.filepath)
                         .unwrap()
-                        .filter_map(move |LineSongPair(_, song)| {
-                            let id = song.id.clone();
+                        .filter_map(move |LineItemPair(_, item)| {
+                            let id = item.get_id().to_string();
 
-                            let contains = songids.contains(&id);
-                            contains.then(|| (id, Arc::new(Mutex::new(song))))
+                            let contains = ids.contains(&id);
+                            contains.then(|| (id, Arc::new(Mutex::new(item))))
                         })
                         .collect()
                 };
-                self.map.extend(songs.clone());
-                songs.into_iter().map(|(str, _)| {
+                self.map.extend(items.clone());
+                items.into_iter().map(|(str, _)| {
                     let arc = self.new_arc(&str);
-                    (str, arc)
+                    (str.to_string(), arc)
                 })
             })
             .into_iter()
             .flatten()
     }
 
-    fn new_arc(&self, songid: &SongKey) -> Arc<Mutex<Song>> {
-        Arc::clone(&self.map[songid])
+    fn new_arc(&self, id: &str) -> Arc<Mutex<T>> {
+        Arc::clone(&self.map[id])
     }
 
-    /// Extends the cache with new songs. This is different from extend() in that this uses the map's filelock and precaches the new songs.
+    pub fn cache_size(&self) -> usize {
+        self.map.len()
+    }
+
+    /// Extends the cache with new items. This is different from extend() in that this uses the map's filelock and precaches the new items.
     pub async fn extend_file(
         &mut self,
-        songs: impl Iterator<Item = Song>,
+        items: impl Iterator<Item = T>,
         overwrite: bool,
     ) -> Result<(), async_std::io::Error> {
-        let mut songs: HashMap<String, Song> = to_hash_map(songs);
+        let mut items: HashMap<String, T> = to_hash_map(items);
 
-        let songs_path = &self.filepath;
-        let tempfile = songs_path.with_extension("ndjson.tmp");
+        let file_path = &self.filepath;
+        let tempfile = file_path.with_extension("ndjson.tmp");
         {
-            // Create the temporary file to write the new songlist to
+            // Create the temporary file to write the new list to
             let output_file = async_std::fs::File::create(&tempfile).await?;
             let mut out = async_std::io::BufWriter::new(output_file);
 
-            // Read the original songlist
+            // Read the original list
             {
-                let valid_songs: Vec<Vec<u8>> = {
+                let valid_items: Vec<Vec<u8>> = {
                     let _lock = self.lock.lock().unwrap();
-                    if let Ok(songlist) = SongCache::read_songs_from_ndjson(songs_path) {
+                    if let Ok(itemlist) = FileCache::read_items_from_ndjson(file_path) {
                         // Filter through the lines, find existing keys and skip broken lines
-                        filter_file_songs(songlist, overwrite, &mut songs).collect()
+                        Self::filter_file_itmes(itemlist, overwrite, &mut items).collect()
                     } else {
                         vec![vec![]]
                     }
                 };
-                for bytes in valid_songs {
+                for bytes in valid_items {
                     out.write(&bytes).await?;
                 }
 
@@ -172,20 +185,20 @@ impl SongCache {
             }
 
             // Add remaining keys to the file
-            for (id, song) in songs {
-                let mut json = serde_json::to_string(&song).unwrap();
+            for (id, item) in items {
+                let mut json = serde_json::to_string(&item).unwrap();
                 json.push('\n');
                 out.write(json.as_bytes()).await?;
 
-                // Add song to cache
-                self.map.insert(id, Arc::new(Mutex::new(song)));
+                // Add item to cache
+                self.map.insert(id, Arc::new(Mutex::new(item)));
             }
             out.flush().await?;
         }
         // Replace songs.ndjson with songs.ndjson.tmp
         {
             let _lock = self.lock.lock().unwrap();
-            std::fs::rename(&tempfile, songs_path)?;
+            std::fs::rename(&tempfile, file_path)?;
         }
 
         Ok(())
@@ -193,25 +206,25 @@ impl SongCache {
 
     pub async fn extend(
         pth: impl AsRef<Path>,
-        songs: impl Iterator<Item = Song>,
+        items: impl Iterator<Item = T>,
         overwrite: bool,
     ) -> Result<(), async_std::io::Error> {
-        let mut songs: HashMap<String, Song> = to_hash_map(songs);
+        let mut items = to_hash_map(items);
 
-        let songs_path = pth.as_ref();
-        let tempfile = songs_path.with_extension("ndjson.tmp");
+        let file_path = pth.as_ref();
+        let tempfile = file_path.with_extension("ndjson.tmp");
 
         {
-            // Create the temporary file to write the new songlist to
+            // Create the temporary file to write the new list to
             let output_file = async_std::fs::File::create(&tempfile).await?;
             let mut out = async_std::io::BufWriter::new(output_file);
             {
-                // Read the original songlist
-                if let Ok(songlist) = SongCache::read_songs_from_ndjson(songs_path) {
+                // Read the original list
+                if let Ok(itemlist) = FileCache::read_items_from_ndjson(file_path) {
                     // Filter through the lines, find existing keys and skip broken lines
-                    let valid_songs = filter_file_songs(songlist, overwrite, &mut songs);
+                    let valid_items = Self::filter_file_itmes(itemlist, overwrite, &mut items);
 
-                    for bytes in valid_songs {
+                    for bytes in valid_items {
                         out.write(&bytes).await?;
                     }
 
@@ -220,43 +233,63 @@ impl SongCache {
             }
 
             // Add remaining keys to the file
-            for (_id, song) in songs {
-                let mut json = serde_json::to_string(&song).unwrap();
+            for (_id, item) in items {
+                let mut json = serde_json::to_string(&item).unwrap();
                 json.push('\n');
                 out.write(json.as_bytes()).await?;
             }
             out.flush().await?;
         }
         // Replace songs.ndjson with songs.ndjson.tmp
-        async_std::fs::rename(&tempfile, &songs_path).await?;
+        async_std::fs::rename(&tempfile, &file_path).await?;
 
         Ok(())
+    }
+
+    fn filter_file_itmes<'a>(
+        items: impl Iterator<Item = LineItemPair<T>> + 'a,
+        overwrite: bool,
+        filter: &'a mut HashMap<String, T>,
+    ) -> impl Iterator<Item = Vec<u8>> + 'a {
+        items.filter_map(move |LineItemPair(mut line, item)| {
+            line.push('\n');
+            let id = item.get_id();
+            match (overwrite, filter.contains_key(id)) {
+                (true, true) => None,
+                (true, false) => Some(line.as_bytes().to_vec()),
+                (false, true) => {
+                    filter.remove(id);
+                    Some(line.as_bytes().to_vec())
+                }
+                (false, false) => Some(line.as_bytes().to_vec()),
+            }
+        })
     }
 }
 
 #[derive(Default, Debug, Clone)]
-pub struct CacheInterface {
-    cache: SongCacheMap,
-    keys: HashSet<SongKey>,
+pub struct CacheInterface<T: ?Sized> {
+    cache: CacheMap<T>,
+    keys: HashSet<String>,
 }
 
-impl CacheInterface {
+impl<T: IDed + ?Sized> CacheInterface<T> {
     pub fn get<'a>(
         &'a self,
-        songids: &'a HashSet<SongKey>,
-    ) -> impl Iterator<Item = (String, Arc<Mutex<Song>>)> + '_ {
-        let existing = songids.intersection(&self.keys).cloned();
+        ids: &'a HashSet<String>,
+    ) -> impl Iterator<Item = (String, Arc<Mutex<T>>)> + '_ {
+        let existing = ids.intersection(&self.keys).cloned();
         existing.map(|k| (k.clone(), Arc::clone(&self.cache[&k])))
     }
 
-    pub fn extend(&mut self, songlist: SongCacheMap) {
-        let new_keys: HashSet<SongKey> = songlist.keys().cloned().collect();
+    pub fn extend(&mut self, items: CacheMap<T>) {
+        let new_keys: HashSet<String> = items.keys().cloned().collect();
         self.keys = self.keys.union(&new_keys).cloned().collect();
-        self.cache.extend(songlist)
+        self.cache.extend(items)
     }
 
-    pub fn pop(&mut self, songlist: impl IntoIterator<Item = String>) -> SongCacheMap {
-        let new_cache: SongCacheMap = songlist
+    pub fn pop(&mut self, itemlist: impl IntoIterator<Item = String>) -> CacheMap<T> {
+        let new_cache: CacheMap<_> = itemlist
             .into_iter()
             .filter_map(|k| self.cache.remove_entry(&k))
             .collect();
@@ -264,7 +297,7 @@ impl CacheInterface {
         new_cache
     }
 
-    pub fn replace(&mut self, cache: SongCacheMap) {
+    pub fn replace(&mut self, cache: CacheMap<T>) {
         self.keys = cache.keys().cloned().collect();
         self.cache = cache;
     }
@@ -278,25 +311,6 @@ impl CacheInterface {
     pub fn get_keys(&self) -> &HashSet<String> {
         &self.keys
     }
-}
-
-fn filter_file_songs<'a>(
-    songlist: impl Iterator<Item = LineSongPair> + 'a,
-    overwrite: bool,
-    songs: &'a mut HashMap<String, Song>,
-) -> impl Iterator<Item = Vec<u8>> + 'a {
-    songlist.filter_map(move |LineSongPair(mut line, song)| {
-        line.push('\n');
-        match (overwrite, songs.contains_key(&song.id)) {
-            (true, true) => None,
-            (true, false) => Some(line.as_bytes().to_vec()),
-            (false, true) => {
-                songs.remove(&song.id);
-                Some(line.as_bytes().to_vec())
-            }
-            (false, false) => Some(line.as_bytes().to_vec()),
-        }
-    })
 }
 
 #[cfg(test)]
@@ -318,7 +332,7 @@ mod tests {
             .join(format!("{:x}", rand::random::<u64>()))
     }
 
-    use super::SongCache;
+    use super::FileCache;
 
     #[test]
     fn fetching() {
@@ -332,7 +346,7 @@ mod tests {
             .collect();
 
         let tmpfile = random_file();
-        let mut sc = SongCache {
+        let mut sc = FileCache {
             lock: TESTING_LOCK.clone(),
             filepath: tmpfile,
             ..Default::default()
@@ -360,7 +374,7 @@ mod tests {
         let keys: HashSet<SongKey> = songs.clone().iter().map(|s| s.id.clone()).collect();
 
         let tmpfile = random_file();
-        let mut sc = SongCache {
+        let mut sc = FileCache {
             lock: TESTING_LOCK.clone(),
             filepath: tmpfile,
             ..Default::default()
@@ -372,7 +386,7 @@ mod tests {
         assert![extension_result.is_ok()];
 
         sc.fetch(&keys);
-        let mut unused: Vec<_> = sc.find_unused_songs().collect();
+        let mut unused: Vec<_> = sc.find_unused_itmes().collect();
         println!["{sc:?}"];
         println!["Unused songs before: {:?}", unused];
         assert_eq![unused.len(), 2];
@@ -383,11 +397,11 @@ mod tests {
             let song = guards[&first_key].lock();
             println!["Captured song: {:?}", song];
 
-            unused = sc.find_unused_songs().collect();
+            unused = sc.find_unused_itmes().collect();
             println!["Unused songs during: {:?}", unused];
             assert_eq![unused.len(), 1];
         }
-        unused = sc.find_unused_songs().collect();
+        unused = sc.find_unused_itmes().collect();
         println!["Unused songs after: {:?}", unused];
         assert_eq![unused.len(), 2];
     }
@@ -398,7 +412,7 @@ mod tests {
         let first_key = songs[0].id.clone(); // the drop target
 
         let tmpfile = random_file();
-        let mut sc = SongCache {
+        let mut sc = FileCache {
             lock: TESTING_LOCK.clone(),
             filepath: tmpfile,
             ..Default::default()
@@ -410,14 +424,14 @@ mod tests {
             println!["{r:?}"];
             assert![r.is_ok()];
         }
-        let mut unused: Vec<_> = sc.find_unused_songs().collect();
+        let mut unused: Vec<_> = sc.find_unused_itmes().collect();
         assert_eq![unused.len(), 2];
         sc.drop_from_cache([first_key]);
-        unused = sc.find_unused_songs().collect();
+        unused = sc.find_unused_itmes().collect();
         assert_eq![unused.len(), 1];
 
         sc.drop_from_cache(unused);
-        unused = sc.find_unused_songs().collect();
+        unused = sc.find_unused_itmes().collect();
         assert_eq![unused.len(), 0];
     }
 }

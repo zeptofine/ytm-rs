@@ -1,10 +1,11 @@
-use std::time::Duration;
+use std::{future::Future, process, time::Duration};
 
 use iced::{
     widget::{button, hover, text},
     Command, Element,
 };
 use reqwest::{Client, Url};
+use serde::Serialize;
 
 use crate::ytmrs::YtmrsMsg;
 
@@ -14,10 +15,23 @@ const DEFAULT_PORT: u16 = 55001;
 #[derive(Debug)]
 pub enum ConnectionMode {
     /// The app is a direct parent to the server.
-    Child(async_process::Child),
+    Child(process::Child, Url),
 
     /// The app is a separate process that connects to the server.
-    External(Box<Client>, Url),
+    External(Url),
+}
+
+#[derive(Debug, Serialize)]
+struct RequestInfoDict {
+    url: String,
+    process: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum RequestResult {
+    Success(String),
+    RequestError,
+    JsonParseError,
 }
 
 #[derive(Debug, Default)]
@@ -71,23 +85,20 @@ impl BackendHandler {
             } else if exists {
                 // Assumes the existing server is a backend.
                 println!["Successfully polled to YTM_RS_BACKEND"];
-                BackendLaunchStatus::Launched(ConnectionMode::External(
-                    Box::new(Client::new()),
-                    url,
-                ))
+                BackendLaunchStatus::Launched(ConnectionMode::External(url))
             } else {
                 // Try to create the server as a child process
                 let python_exe = which::which("python");
                 match python_exe {
                     Ok(exe) => {
                         println!["Python found at {exe:?}"];
-                        let child = async_process::Command::new(exe)
+                        let child = process::Command::new(exe)
                             .args(["-m", "ytm_rs_backend", &format!["{}", port]])
-                            .stdout(async_process::Stdio::piped())
-                            .kill_on_drop(true)
+                            .stdout(process::Stdio::piped())
+                            // .kill_on_drop(true)
                             .spawn();
                         match child {
-                            Ok(c) => BackendLaunchStatus::Launched(ConnectionMode::Child(c)),
+                            Ok(c) => BackendLaunchStatus::Launched(ConnectionMode::Child(c, url)),
                             Err(e) => BackendLaunchStatus::Failed(e),
                         }
                     }
@@ -98,22 +109,22 @@ impl BackendHandler {
         Self { status }
     }
 
-    pub async fn poll_external_server(client: Client, url: Url) -> Result<(), reqwest::Error> {
-        let _ = client.get(url).send().await?;
+    pub async fn poll_external_server(url: Url) -> Result<(), reqwest::Error> {
+        let _ = reqwest::get(url).await?;
 
         Ok(())
     }
 
     pub fn poll(&mut self) -> Option<Command<YtmrsMsg>> {
         match &mut self.status {
-            BackendLaunchStatus::Launched(ConnectionMode::Child(ref mut c)) => {
-                if let Ok(Some(status)) = c.try_status() {
+            BackendLaunchStatus::Launched(ConnectionMode::Child(ref mut c, _)) => {
+                if let Ok(Some(status)) = c.try_wait() {
                     self.status = BackendLaunchStatus::Exited(status.code().unwrap() as usize);
                 }
             }
-            BackendLaunchStatus::Launched(ConnectionMode::External(client, ref mut url)) => {
+            BackendLaunchStatus::Launched(ConnectionMode::External(ref mut url)) => {
                 return Some(Command::perform(
-                    Self::poll_external_server(*client.clone(), url.clone()),
+                    Self::poll_external_server(url.clone()),
                     |r| match r {
                         Ok(()) => YtmrsMsg::BackendStatusPollSuccess,
                         Err(e) => YtmrsMsg::BackendStatusPollFailure(e.to_string()),
@@ -126,6 +137,73 @@ impl BackendHandler {
             BackendLaunchStatus::PythonMissing => todo!(),
         }
         None
+    }
+
+    pub fn request_info(&self, url: String) -> Option<impl Future<Output = RequestResult>> {
+        if let BackendLaunchStatus::Launched(mode) = &self.status {
+            println!["Requesting info for {}", url];
+            Some(match mode {
+                ConnectionMode::Child(_, host) | ConnectionMode::External(host) => {
+                    let mut host = host.clone();
+                    host.set_path("request_info");
+                    Self::info(host, url)
+                }
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn request_search(&self, query: String) -> Option<impl Future<Output = RequestResult>> {
+        if let BackendLaunchStatus::Launched(mode) = &self.status {
+            println!["Requesting search of {:#?}", query];
+            Some(match mode {
+                ConnectionMode::Child(_, host) | ConnectionMode::External(host) => {
+                    let mut host = host.clone();
+                    host.set_path("search");
+                    Self::search(host, query)
+                }
+            })
+        } else {
+            None
+        }
+    }
+
+    async fn info(host: Url, url: String) -> RequestResult {
+        let info_dict = RequestInfoDict {
+            url,
+            process: false,
+        };
+        match Client::new()
+            .post(host.clone())
+            .json(&info_dict)
+            .send()
+            .await
+        {
+            Err(e) => {
+                println!["{e:?}"];
+                RequestResult::RequestError
+            }
+            Ok(r) => match r.text().await {
+                Err(_) => RequestResult::JsonParseError,
+                Ok(j) => RequestResult::Success(j),
+            },
+        }
+    }
+
+    async fn search(mut host: Url, query: String) -> RequestResult {
+        host.query_pairs_mut().append_pair("q", &query);
+
+        match Client::new().get(host).send().await {
+            Err(e) => {
+                println!["{e:?}"];
+                RequestResult::RequestError
+            }
+            Ok(r) => match r.text().await {
+                Err(_) => RequestResult::JsonParseError,
+                Ok(j) => RequestResult::Success(j),
+            },
+        }
     }
 
     pub fn view(&self) -> Element<YtmrsMsg> {

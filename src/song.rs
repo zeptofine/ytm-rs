@@ -1,15 +1,16 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::path::PathBuf;
 
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 
 use serde::{Deserialize, Serialize};
 
 use iced::{
-    widget::{column, text, Column},
+    advanced::image as iced_image,
+    widget::{column, row, text, Image, Row},
     Length,
 };
 
-use crate::{response_types::UrlString, settings::SongKey};
+use crate::{caching::IDed, response_types::UrlString, settings::SongKey};
 
 fn r(len: usize) -> String {
     thread_rng()
@@ -41,6 +42,8 @@ pub struct Song {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thumbnail_path: Option<PathBuf>,
+    #[serde(skip)]
+    pub thumbnail_handle: Option<iced_image::Handle>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub song_path: Option<PathBuf>,
 }
@@ -71,8 +74,7 @@ impl Song {
                 .cycle()
                 .take(thread_rng().gen_range(0..=5))
                 .collect(),
-            thumbnail_path: None,
-            song_path: None,
+            ..Default::default()
         }
     }
 
@@ -82,19 +84,21 @@ impl Song {
             channel: self.channel.clone(),
             artists: self.artists.clone(),
             duration: self.duration,
+            handle: self.thumbnail_handle.clone(),
         }
     }
 }
-
-pub fn to_hash_map(songs: impl Iterator<Item = Song>) -> HashMap<String, Song> {
-    songs.map(|s| (s.id.clone(), s)).collect()
+impl IDed for Song {
+    fn get_id(&self) -> &str {
+        &self.id
+    }
 }
-
 pub struct SongData {
     pub title: String,
     pub channel: String,
     pub artists: Option<Vec<String>>,
     pub duration: f32,
+    pub handle: Option<iced_image::Handle>,
 }
 impl SongData {
     /// Used for placeholders of songs that are not cached yet
@@ -104,6 +108,7 @@ impl SongData {
             channel: "???".to_string(),
             artists: None,
             duration: -1.0,
+            handle: None,
         }
     }
 
@@ -124,14 +129,32 @@ impl SongData {
         }
     }
 
-    pub fn column<'a, M: 'a>(self) -> Column<'a, M, iced::Theme, iced::Renderer> {
-        column![
-            text(self.title.clone()),
-            text(self.format_duration()),
-            text(self.format_artists()),
-        ]
-        .spacing(1)
-        .padding(5)
-        .width(Length::Fill)
+    pub fn image(&self, x: u16, y: u16) -> Option<Image<iced_image::Handle>> {
+        Self::img(self.handle.clone(), x, y)
+    }
+
+    fn img(h: Option<iced_image::Handle>, x: u16, y: u16) -> Option<Image<iced_image::Handle>> {
+        h.map(|h| {
+            Image::new(h)
+                .width(x)
+                .height(y)
+                .content_fit(iced::ContentFit::Cover)
+        })
+    }
+
+    pub fn column<'a, M: 'a>(self) -> Row<'a, M, iced::Theme, iced::Renderer> {
+        let mut r = row![];
+        r = r.push_maybe(Self::img(self.handle.clone(), 50, 50));
+        r = r.push(
+            column![
+                text(self.title.clone()),
+                text(self.format_duration()),
+                text(self.format_artists()),
+            ]
+            .spacing(1)
+            .padding(5)
+            .width(Length::Fill),
+        );
+        r
     }
 }

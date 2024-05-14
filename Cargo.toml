@@ -6,7 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-process = "2.2.2"
 async-std = "1.12.0"
 directories-next = "2.0.0"
 image = { version = "0.25.0", features = ["webp", "png", "jpeg"] }
@@ -21,18 +20,15 @@ tokio = { version = "1.36.0", features = ["macros", "parking_lot", "time"] }
 uuid = { version = "1.8.0", features = ['v4', 'fast-rng', 'serde'] }
 which = "6.0.1"
 
-
 [dependencies.material-colors]
 git = "https://github.com/Aiving/material-colors"
 features = ["serde", "image"]
-
 
 [dependencies.iced]
 git = "https://github.com/iced-rs/iced.git"
 rev = "d5bb6deb2fe15790d9ffe37243592189f1dd28c5"
 # default-features = false
 features = ["debug", "lazy", "tokio", "image", "canvas", "advanced"]
-
 
 [dependencies.iced_drop]
 git = "https://github.com/zeptofine/iced_drop"
