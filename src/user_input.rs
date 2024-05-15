@@ -8,6 +8,7 @@ use iced::{
 use once_cell::sync::Lazy;
 
 static INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
+
 #[derive(Debug, Clone, Default)]
 pub enum SelectionMode {
     #[default]
@@ -67,26 +68,26 @@ impl SelectionMode {
                 Self::None => Self::Multiple(vec![clicked_idx]),
                 Self::Single(idx) => Self::Multiple(vec![idx, clicked_idx]),
                 Self::Multiple(mut v) => {
-                    let idxidx = v.iter().position(|&x| x == clicked_idx);
-                    if let Some(clicked_idx_idx) = idxidx {
-                        // ew
-                        v.remove(clicked_idx_idx);
-                    } else {
-                        v.push(clicked_idx);
+                    match v.iter().position(|&x| x == clicked_idx) {
+                        Some(idx) => {
+                            v.remove(idx);
+                        }
+                        None => {
+                            v.push(clicked_idx);
+                        }
                     }
                     Self::Multiple(v)
                 }
                 Self::Range { first: _, r } => {
                     let mut v: Vec<usize> = r.into_iter().collect();
-
-                    let idxidx = v.iter().position(|&x| x == clicked_idx);
-                    if let Some(clicked_idx_idx) = idxidx {
-                        // ew
-                        v.remove(clicked_idx_idx);
-                    } else {
-                        v.push(clicked_idx);
+                    match v.iter().position(|&x| x == clicked_idx) {
+                        Some(idx) => {
+                            v.remove(idx);
+                        }
+                        None => {
+                            v.push(clicked_idx);
+                        }
                     }
-
                     Self::Multiple(v)
                 }
             }
@@ -109,7 +110,6 @@ impl SelectionMode {
 pub struct UserInputs {
     pub url: String,
     pub modifiers: keyboard::Modifiers,
-    pub selection_mode: SelectionMode,
 }
 
 #[derive(Debug, Clone)]

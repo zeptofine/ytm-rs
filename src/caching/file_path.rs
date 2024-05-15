@@ -8,7 +8,7 @@ pub struct FilePathPair {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thumbnail: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub file_path: Option<String>,
+    pub song: Option<String>,
 }
 impl IDed for FilePathPair {
     fn id(&self) -> &str {

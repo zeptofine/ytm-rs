@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashSet, VecDeque},
     fmt::Debug,
     path::PathBuf,
     time,
@@ -7,7 +7,6 @@ use std::{
 
 use iced::{
     advanced::widget::Id as WId,
-    alignment::Horizontal,
     keyboard,
     widget::{
         column,
@@ -16,7 +15,7 @@ use iced::{
     },
     Alignment, Command as Cm, Element, Length, Subscription,
 };
-use iced_drop::{droppable, zones_on_point};
+use iced_drop::zones_on_point;
 use reqwest::Url;
 
 use crate::{
@@ -24,8 +23,9 @@ use crate::{
     backend_handler::{BackendHandler, BackendLaunchStatus, RequestResult},
     caching::{FileCache, FilePathPair},
     response_types::{YTResponseError, YTResponseType},
-    settings::{project_directory, SongKey, YTMRSettings},
-    song::{Song, SongData},
+    search_window::{SWMessage, SearchType, SearchWindow},
+    settings::{project_data_dir, YTMRSettings},
+    song::Song,
     song_operations::{
         ConstructorItem, OperationTracker, SongOpConstructor, SongOpMessage, SongOpTracker,
         TreeDirected, UpdateResult,
@@ -70,14 +70,20 @@ impl Tickers {
 }
 
 fn songs_path() -> PathBuf {
-    let mut path = project_directory();
+    let mut path = project_data_dir();
     path.push("songs.ndjson");
     path
 }
 
 fn file_paths_path() -> PathBuf {
-    let mut path = project_directory();
+    let mut path = project_data_dir();
     path.push("filepaths.ndjson");
+    path
+}
+
+fn playlists_directory() -> PathBuf {
+    let mut path = project_data_dir();
+    path.push("playlists");
     path
 }
 
@@ -98,6 +104,8 @@ impl Default for YtmrsCache {
 #[derive(Debug, Default)]
 pub struct Ytmrs {
     inputs: UserInputs,
+    search: SearchWindow,
+
     audio_manager: YTMRSAudioManager,
     tickers: Tickers,
     backend_handler: BackendHandler,
@@ -108,7 +116,6 @@ pub struct Ytmrs {
 
 #[derive(Debug, Clone)]
 pub enum YtmrsMsg {
-    Drop(String, iced::Point, iced::Rectangle),
     HandleZones(String, Vec<(iced::advanced::widget::Id, iced::Rectangle)>),
 
     CacheTick,
@@ -117,10 +124,6 @@ pub enum YtmrsMsg {
     BackendStatusPollFailure(String),
 
     PlayingStatusTick,
-
-    SongSimpleClicked(usize),
-    SongClicked(usize, String),
-    InputMessage(InputMessage),
 
     CachingSuccess(HashSet<String>),
     CachingFailure,
@@ -131,6 +134,8 @@ pub enum YtmrsMsg {
 
     SetNewBackground(String, BasicYtmrsScheme),
 
+    InputMessage(InputMessage),
+    SearchWindowMessage(SWMessage),
     SongOpMsg(SongOpMessage),
 
     ModifierChanged(keyboard::Modifiers),
@@ -145,13 +150,6 @@ impl Ytmrs {
     }
 
     pub fn load(&mut self) -> Cm<YtmrsMsg> {
-        let arcs = self
-            .cache
-            .songs
-            .fetch(&self.settings.queue.iter().cloned().collect());
-
-        self.settings.queue_cache.extend(arcs);
-
         self.settings
             .operation_constructor
             .update_cache(&mut self.cache.songs);
@@ -166,6 +164,7 @@ impl Ytmrs {
     pub fn subscription(&self) -> Subscription<YtmrsMsg> {
         Subscription::batch([
             self.tickers.subscription(),
+            // Handle tracking modifiers
             keyboard::on_key_press(|_, m| Some(YtmrsMsg::ModifierChanged(m))),
             keyboard::on_key_release(|_, m| Some(YtmrsMsg::ModifierChanged(m))),
         ])
@@ -173,39 +172,10 @@ impl Ytmrs {
 
     pub fn view(&self, scheme: FullYtmrsScheme) -> Element<YtmrsMsg> {
         let input = self.inputs.view().map(YtmrsMsg::InputMessage);
-        let keys: HashSet<SongKey> = self.settings.queue.iter().cloned().collect();
-        let cached_map: HashMap<_, _> = self.settings.queue_cache.get(&keys).collect();
 
         let backend_status: Element<YtmrsMsg> = self.backend_handler.view();
 
-        let songs = self.settings.queue.iter().enumerate().map(|(idx, key)| {
-            let selected = self.inputs.selection_mode.contains(idx);
-            let style = scheme.song_appearance.update(selected);
-            droppable(
-                Container::new(match cached_map.get(key) {
-                    Some(songc) => {
-                        let song = songc.lock().unwrap();
-                        song.as_data().row::<YtmrsMsg>()
-                    }
-                    None => SongData::mystery_with_id(key.clone()).row::<YtmrsMsg>(),
-                })
-                .style(move |_| style),
-            )
-            .on_drop(move |pt, rec| YtmrsMsg::Drop(key.clone(), pt, rec))
-            .on_click(YtmrsMsg::SongSimpleClicked(idx))
-            .on_single_click(YtmrsMsg::SongClicked(idx, key.clone()))
-            .into()
-        });
-
-        let song_list = scrollable(
-            Container::new(column(songs).width(Length::Fill))
-                .align_x(Horizontal::Left)
-                .width(Length::Fill)
-                .max_width(400)
-                .padding(0)
-                .align_x(Horizontal::Left),
-        )
-        .style(scheme.scrollable_style.clone().update());
+        let search = self.search.view(&scheme).map(YtmrsMsg::SearchWindowMessage);
 
         let constructor = scrollable(
             self.settings
@@ -223,38 +193,15 @@ impl Ytmrs {
 
         let constructor_row = column![constructor, base_drop_target];
 
-        column![
-            row![input, backend_status],
-            row![song_list, constructor_row]
-        ]
-        .align_items(Alignment::Center)
-        .spacing(20)
-        .padding(10)
-        .into()
+        column![row![input, backend_status], row![search, constructor_row]]
+            .align_items(Alignment::Center)
+            .spacing(20)
+            .padding(10)
+            .into()
     }
 
     pub fn update(&mut self, message: YtmrsMsg) -> Cm<YtmrsMsg> {
         let command = match message {
-            YtmrsMsg::SongSimpleClicked(idx) => {
-                if let SelectionMode::None = self.inputs.selection_mode {
-                    self.inputs.selection_mode = SelectionMode::Single(idx);
-                }
-                Cm::none()
-            }
-            YtmrsMsg::SongClicked(clicked_idx, key) => {
-                println![
-                    "{:?} Pressed with modifiers {:?}",
-                    key, self.inputs.modifiers
-                ];
-                self.inputs.selection_mode = self
-                    .inputs
-                    .selection_mode
-                    .clone()
-                    .update_selection(clicked_idx, &self.inputs.modifiers);
-                println!["Selection: {:#?}", self.inputs.selection_mode];
-
-                Cm::none()
-            }
             YtmrsMsg::ModifierChanged(m) => {
                 self.inputs.modifiers = m;
 
@@ -310,7 +257,7 @@ impl Ytmrs {
                 }
                 YTResponseType::Tab(t) => {
                     println!["Request is a 'tab'"];
-                    self.settings.queue.clear();
+
                     let songs: Vec<Song> = t
                         .entries
                         .iter()
@@ -327,10 +274,13 @@ impl Ytmrs {
                         })
                         .collect();
 
-                    let keys: HashSet<_> = songs.iter().map(|s| &s.id).cloned().collect();
-                    self.settings.queue.clear();
-                    self.settings.queue.extend(keys.clone());
+                    let keys: Vec<_> = songs.iter().map(|s| &s.id).cloned().collect();
 
+                    self.search.search_type = SearchType::new_tab(keys.clone());
+
+                    let keyset: HashSet<_> = keys.into_iter().collect();
+
+                    // Add the songs to the file cache
                     Cm::perform(
                         FileCache::extend(
                             self.cache.songs.filepath.clone(),
@@ -338,7 +288,7 @@ impl Ytmrs {
                             true,
                         ),
                         move |s| match s {
-                            Ok(_) => YtmrsMsg::CachingSuccess(keys),
+                            Ok(_) => YtmrsMsg::CachingSuccess(keyset),
                             Err(_) => YtmrsMsg::CachingFailure,
                         },
                     )
@@ -352,6 +302,13 @@ impl Ytmrs {
                 println!["{:?}", e];
                 Cm::none()
             }
+            YtmrsMsg::SearchWindowMessage(msg) => self
+                .search
+                .update(msg, &self.inputs.modifiers)
+                .map(|msg| match msg {
+                    SWMessage::HandleZones(k, z) => YtmrsMsg::HandleZones(k, z),
+                    _ => YtmrsMsg::SearchWindowMessage(msg),
+                }),
             YtmrsMsg::SongOpMsg(msg) => {
                 match self.settings.operation_constructor.update(msg) {
                     UpdateResult::Cm(cm) => cm.map(YtmrsMsg::SongOpMsg),
@@ -376,12 +333,6 @@ impl Ytmrs {
                     UpdateResult::None => Cm::none(),
                 }
             }
-            YtmrsMsg::Drop(key, point, _rec) => zones_on_point(
-                move |zones| YtmrsMsg::HandleZones(key.clone(), zones),
-                point,
-                None,
-                None,
-            ),
             YtmrsMsg::HandleZones(song_key, zones) => {
                 if zones.is_empty() {
                     return Cm::none();
@@ -393,49 +344,19 @@ impl Ytmrs {
                 if let Some((id, _)) = zones.iter().rev().find(|(id, _r)| top.item_has_id(id)) {
                     println!["Target: {:#?}", id];
 
-                    let path = top.path_to_id(id).unwrap();
+                    let mut path = top.path_to_id(id).unwrap();
                     println!["{:?}", path];
-                    match &self.inputs.selection_mode {
-                        SelectionMode::None => {}
-                        SelectionMode::Single(_) => {
-                            let item: ConstructorItem = song_key.into();
-                            top.push_to_path(VecDeque::from(path), item);
-                        }
-                        SelectionMode::Multiple(v) => {
-                            let mut v = v.clone();
-                            v.sort();
-                            let items = v.iter().filter_map(|idx| {
-                                self.settings
-                                    .queue
-                                    .get(*idx)
-                                    .map(|k| ConstructorItem::from(k.clone()))
-                            });
-                            let mut pth = path.clone();
-                            let mut start = pth.pop().unwrap_or(0);
-                            for item in items {
-                                pth.push(start);
-                                top.push_to_path(VecDeque::from(pth.clone()), item);
-                                pth.pop();
-                                start += 1;
-                            }
-                        }
-
-                        SelectionMode::Range { first: _, r } => {
-                            let items = r.clone().filter_map(|idx| {
-                                self.settings
-                                    .queue
-                                    .get(idx)
-                                    .map(|k| ConstructorItem::from(k.clone()))
-                            });
-                            let mut pth = path.clone();
-                            let mut start = pth.pop().unwrap_or(0);
-                            for item in items {
-                                pth.push(start);
-                                top.push_to_path(VecDeque::from(pth.clone()), item);
-                                pth.pop();
-                                start += 1;
-                            }
-                        }
+                    let selected_items = self
+                        .search
+                        .selected_keys()
+                        .into_iter()
+                        .map(|k| ConstructorItem::from(k.clone()));
+                    let mut idx = path.pop().unwrap_or(0);
+                    for item in selected_items {
+                        path.push(idx);
+                        top.push_to_path(VecDeque::from(path.clone()), item);
+                        path.pop();
+                        idx += 1;
                     }
                 } else if let Some((id, _)) = zones.last() {
                     if *id == WId::new("base_drop_target") {
@@ -454,7 +375,8 @@ impl Ytmrs {
             YtmrsMsg::CachingSuccess(keys) => {
                 println!["Caching success!"];
                 let new_songs = self.cache.songs.fetch(&keys);
-                self.settings.queue_cache.extend(new_songs);
+                self.search.cache.extend(new_songs);
+                // self.settings.queue_cache.extend(new_songs);
                 Cm::none()
             }
             YtmrsMsg::CachingFailure => {
@@ -550,16 +472,16 @@ impl Ytmrs {
     fn clean_cache(&mut self) {
         println!["CACHE TICK:"];
         let statistics = {
-            let queue: HashSet<String> = self.settings.queue.iter().cloned().collect();
-            let qarcs: HashSet<String> = self.settings.queue_cache.get_keys().clone();
+            let queue: HashSet<String> = self.search.used_keys().into_iter().cloned().collect();
+            let qarcs: HashSet<String> = self.search.cache.get_keys().clone();
             let queue_count = queue.len();
             let qarcs_count = qarcs.len();
             let deleted_count = if queue != qarcs {
                 let used_arcs: HashSet<String> = qarcs.intersection(&queue).cloned().collect();
 
-                self.settings
-                    .queue_cache
-                    .replace(self.settings.queue_cache.get(&used_arcs).collect());
+                self.search
+                    .cache
+                    .replace(self.search.cache.get(&used_arcs).collect());
                 qarcs_count - used_arcs.len()
             } else {
                 0

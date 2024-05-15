@@ -11,13 +11,12 @@ use iced::{
     theme::{Palette, Theme},
     widget::{button, column, container, text},
 };
-use kittyaudio::{Mixer, Sound};
-
 mod audio;
 mod backend_handler;
 mod caching;
 mod playlist;
 mod response_types;
+mod search_window;
 mod settings;
 mod song;
 mod song_list;

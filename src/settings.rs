@@ -3,11 +3,11 @@ use std::path::PathBuf;
 use async_std::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{caching::CacheInterface, song::Song, song_operations::SongOpConstructor};
+use crate::song_operations::SongOpConstructor;
 
 pub type SongKey = String;
 
-pub fn project_directory() -> PathBuf {
+pub fn project_data_dir() -> PathBuf {
     if let Some(project_dirs) = directories_next::ProjectDirs::from("rs", "zeptofine", "ytm-rs") {
         project_dirs.data_dir().into()
     } else {
@@ -16,7 +16,7 @@ pub fn project_directory() -> PathBuf {
 }
 
 pub fn settings_path() -> PathBuf {
-    let mut path = project_directory();
+    let mut path = project_data_dir();
     path.push("songlist.json");
     path
 }
@@ -34,10 +34,6 @@ impl Default for YTMRUserSettings {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct YTMRSettings {
-    // todo: combine queue and queue_arcs
-    pub queue: Vec<SongKey>,
-    #[serde(skip)]
-    pub queue_cache: CacheInterface<Song>,
     pub operation_constructor: SongOpConstructor,
     pub user_settings: YTMRUserSettings,
 }
