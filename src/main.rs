@@ -11,13 +11,14 @@ use iced::{
     theme::{Palette, Theme},
     widget::{button, column, container, text},
 };
+use kittyaudio::{Mixer, Sound};
 
 mod audio;
 mod backend_handler;
 mod caching;
+mod playlist;
 mod response_types;
 mod settings;
-mod playlist;
 mod song;
 mod song_list;
 mod song_operations;
@@ -218,14 +219,23 @@ pub fn main() -> iced::Result {
 }
 
 // pub fn main() {
-//     let (_stream, stream_handle) = OutputStream::try_default().unwrap();
-//     let sink = Sink::try_new(&stream_handle).unwrap();
+//     let sound = Sound::from_path("BeetrootKvass.wav").unwrap();
+//     let sample_rate = sound.sample_rate();
+//     let duration = sound.duration();
+//     println!("Duration: {:?}", duration);
+//     println!["Sample rate: {:?}", sample_rate];
 
-//     let file = BufReader::new(File::open("Alain.wav").unwrap());
-//     let source = Decoder::new(file).unwrap();
-//     let duration = source.total_duration().unwrap();
+//     let mut mixer = Mixer::new();
+//     mixer.init();
 
-//     sink.append(source);
+//     let playing_sound = mixer.play(sound);
 
-//     std::thread::sleep(duration);
+//     while !playing_sound.finished() {
+//         std::thread::sleep(Duration::from_millis(500));
+//         let index = playing_sound.index();
+//         let secs = index as f32 / sample_rate as f32;
+//         let finished = secs / duration.as_secs_f32();
+//         println!["Current seconds: {:?}", secs];
+//         println!["Percentage finished: {:?}", finished * 100.0];
+//     }
 // }

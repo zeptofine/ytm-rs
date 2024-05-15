@@ -114,15 +114,17 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
             .then(|| {
                 let items: Vec<_> = {
                     let _lock = self.lock.lock().unwrap();
-                    Self::read_items_from_ndjson(&self.filepath)
-                        .unwrap()
-                        .filter_map(move |LineItemPair(_, item)| {
-                            let id = item.id().to_string();
+                    match Self::read_items_from_ndjson(&self.filepath) {
+                        Ok(iter) => iter
+                            .filter_map(move |LineItemPair(_, item)| {
+                                let id = item.id().to_string();
 
-                            let contains = ids.contains(&id);
-                            contains.then(|| (id, Arc::new(Mutex::new(item))))
-                        })
-                        .collect()
+                                let contains = ids.contains(&id);
+                                contains.then(|| (id, Arc::new(Mutex::new(item))))
+                            })
+                            .collect(),
+                        Err(_) => vec![],
+                    }
                 };
                 self.map.extend(items.clone());
                 items.into_iter().map(|(str, _)| {

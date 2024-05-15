@@ -242,7 +242,7 @@ pub struct SongOpConstructor {
     #[serde(skip)]
     cache: CacheInterface<Song>,
 
-    collapsible: bool,
+    pub collapsible: bool,
     collapsed: bool,
     // used for certain operations, like LoopNTimes and Stretch
     n: u32,
@@ -358,7 +358,7 @@ impl SongOpConstructor {
                             let x = arc.lock().unwrap();
                             x.as_data()
                         }
-                        None => SongData::mystery(),
+                        None => SongData::mystery_with_id(key.clone()),
                     }
                 };
                 // let img: Element<SongOpMessage> = song.get_img(75, 75);
@@ -370,7 +370,6 @@ impl SongOpConstructor {
                             .drag_hide(true)
                             .on_single_click(SongOpMessage::SongClicked(wid.clone()))
                             .on_drop(move |pt, rec| SongOpMessage::Dropped(wid.clone(), pt, rec)),
-                        text(format!("{:?}", sid.0)),
                         button("x").on_press(SongOpMessage::Remove(idx))
                     ]
                     .align_items(iced::Alignment::Center),

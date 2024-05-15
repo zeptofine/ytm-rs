@@ -187,7 +187,7 @@ impl Ytmrs {
                         let song = songc.lock().unwrap();
                         song.as_data().row::<YtmrsMsg>()
                     }
-                    None => SongData::mystery().row::<YtmrsMsg>(),
+                    None => SongData::mystery_with_id(key.clone()).row::<YtmrsMsg>(),
                 })
                 .style(move |_| style),
             )

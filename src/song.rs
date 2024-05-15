@@ -102,6 +102,13 @@ impl SongData {
         }
     }
 
+    pub fn mystery_with_id(id: String) -> Self {
+        Self {
+            title: id,
+            ..Self::mystery()
+        }
+    }
+
     pub fn with_handle(&mut self, handle: iced_image::Handle) {
         self.handle = Some(handle);
     }
