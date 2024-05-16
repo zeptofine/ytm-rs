@@ -3,9 +3,10 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 
 use iced::{
-    advanced::image as iced_image,
-    widget::{column, row, text, Image, Row},
-    Length,
+    advanced::{self, image as iced_image},
+    border::Radius,
+    widget::{self, button, column, hover, row, text, Image, Row},
+    Alignment, Background, Border, Color, Element, Length, Shadow, Vector,
 };
 
 use crate::{caching::IDed, response_types::UrlString, settings::SongKey};
@@ -31,7 +32,7 @@ pub struct Song {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub album: Option<String>,
     pub webpage_url: UrlString,
-    pub duration: f32,
+    pub duration: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artists: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -94,11 +95,15 @@ pub fn format_duration(d: &f32) -> String {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum SongMessage {
+    ThumbnailClicked,
+}
 pub struct SongData {
     pub title: String,
     pub channel: String,
     pub artists: Option<Vec<String>>,
-    pub duration: f32,
+    pub duration: f64,
     pub handle: Option<iced_image::Handle>,
 }
 impl SongData {
@@ -140,19 +145,65 @@ impl SongData {
         })
     }
 
-    pub fn row<'a, M: 'a>(self) -> Row<'a, M, iced::Theme, iced::Renderer> {
-        let mut r = row![];
-        r = r.push_maybe(Self::img(self.handle.clone(), 50, 50));
-        r = r.push(
-            column![
-                text(self.title.clone()),
-                text(format_duration(&self.duration)),
-                text(self.format_artists()),
-            ]
-            .spacing(1)
-            .padding(5)
+    /// Creates the thumbnail of the song data, replacing with "???" text upon missing data.
+    fn image_or_placeholder<'a, M>(
+        h: Option<iced_image::Handle>,
+        width: u16,
+        height: u16,
+    ) -> Element<'a, M> {
+        match Self::img(h, width, height) {
+            Some(img) => Element::new(img),
+            None => Element::new(
+                text("???")
+                    .height(height)
+                    .width(width)
+                    .horizontal_alignment(iced::alignment::Horizontal::Center)
+                    .vertical_alignment(iced::alignment::Vertical::Center),
+            ),
+        }
+    }
+
+    pub fn row<'a>(self, playable: bool) -> Row<'a, SongMessage> {
+        let img = Self::image_or_placeholder(self.handle.clone(), 80, 80);
+        row![
+            match playable {
+                false => img,
+                true => hover(
+                    img,
+                    button(
+                        text("▶")
+                            .horizontal_alignment(iced::alignment::Horizontal::Center)
+                            .vertical_alignment(iced::alignment::Vertical::Center)
+                    )
+                    .style(|_, _| widget::button::Style {
+                        background: Some(Background::Color(Color::new(0., 0., 0., 0.75))),
+                        text_color: Color::WHITE,
+                        border: Border {
+                            color: Color::TRANSPARENT,
+                            width: 0.,
+                            radius: 0.into()
+                        },
+                        shadow: Shadow {
+                            color: Color::BLACK,
+                            offset: Vector::ZERO,
+                            blur_radius: 0.
+                        }
+                    })
+                    .width(80)
+                    .height(80)
+                    .on_press(SongMessage::ThumbnailClicked)
+                ),
+            },
+            column![text(format!(
+                "{}\n{}\n{}",
+                self.title.clone(),
+                format_duration(&(self.duration as f32)),
+                self.format_artists()
+            )),]
             .width(Length::Fill),
-        );
-        r
+        ]
+        .spacing(8)
+        .padding(0)
+        .align_items(Alignment::Center)
     }
 }

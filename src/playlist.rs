@@ -1,6 +1,6 @@
 use iced::{
     widget::{button, column, row, scrollable, text, text_input},
-    Command, Element,
+    Element,
 };
 use serde::{Deserialize, Serialize};
 

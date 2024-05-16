@@ -125,7 +125,7 @@ impl UserInputs {
             .on_input(InputMessage::UrlChanged)
             .on_submit(InputMessage::UrlSubmitted)
             .size(20)
-            .padding(15),]
+            .padding(5),]
         .into()
     }
 

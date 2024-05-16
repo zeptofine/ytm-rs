@@ -193,17 +193,21 @@ impl Ytmrs {
             .width(Length::Fill)
             .id(CId::new("base_drop_target"));
 
-        let tracker = self.audio_tracker.view().map(YtmrsMsg::AudioTrackerMessage);
+        let tracker = self
+            .audio_tracker
+            .view(&scheme)
+            .map(YtmrsMsg::AudioTrackerMessage);
 
-        column![
-            row![input, backend_status],
-            row![search, column![constructor, base_drop_target]],
-            tracker
-        ]
-        .align_items(Alignment::Center)
-        .spacing(20)
-        .padding(10)
-        .into()
+        Element::new(
+            column![
+                row![input, backend_status],
+                row![search, column![constructor, base_drop_target]],
+                tracker
+            ]
+            .align_items(Alignment::Center)
+            .spacing(20),
+        )
+        .explain(Color::WHITE)
     }
 
     pub fn update(&mut self, message: YtmrsMsg) -> Cm<YtmrsMsg> {
@@ -274,7 +278,7 @@ impl Ytmrs {
                             view_count: entry.view_count,
                             thumbnail: entry.thumbnails[0].url.clone(),
                             webpage_url: entry.url.clone(),
-                            duration: entry.duration,
+                            duration: entry.duration as f64,
                             artists: Some(vec![entry.channel.clone()]),
                             ..Default::default()
                         })

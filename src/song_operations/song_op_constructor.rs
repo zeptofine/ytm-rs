@@ -361,11 +361,14 @@ impl SongOpConstructor {
                         None => SongData::mystery_with_id(key.clone()),
                     }
                 };
-                // let img: Element<SongOpMessage> = song.get_img(75, 75);
                 let wid = WId::from(sid.0.clone());
+                let swid = WId::from(sid.0.clone());
+                let song = Element::new(data.row(true))
+                    .map(move |_| SongOpMessage::SongClicked(swid.clone()));
+
                 container(
                     row![
-                        droppable(data.row())
+                        droppable(song)
                             .drag_mode(false, true)
                             .drag_hide(true)
                             .on_single_click(SongOpMessage::SongClicked(wid.clone()))

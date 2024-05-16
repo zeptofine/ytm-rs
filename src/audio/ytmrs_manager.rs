@@ -1,4 +1,4 @@
-use std::{fmt::Debug, path::PathBuf, time::Duration};
+use std::{fmt::Debug, path::PathBuf};
 
 use kittyaudio::{Mixer, Sound, SoundHandle};
 

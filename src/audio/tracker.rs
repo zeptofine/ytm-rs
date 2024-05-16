@@ -1,11 +1,9 @@
-use std::time::Duration;
-
 use iced::{
-    widget::{button, column, hover, progress_bar, row, slider, text, Column, Space},
+    widget::{button, column, hover, progress_bar, row, slider, text},
     Alignment, Command, Element, Length,
 };
 
-use crate::song::format_duration;
+use crate::{song::format_duration, styling::FullYtmrsScheme};
 
 use super::YTMRSAudioManager;
 
@@ -51,7 +49,7 @@ impl AudioProgressTracker {
         self.volume = manager.volume();
     }
 
-    pub fn view(&self) -> Element<TrackerMsg> {
+    pub fn view(&self, _scheme: &FullYtmrsScheme) -> Element<TrackerMsg> {
         let elapsed = self.elapsed.unwrap_or(0.0);
         let range = 0.0..=self.total.unwrap_or(1.0);
 
@@ -63,36 +61,42 @@ impl AudioProgressTracker {
 
         let progress_bar = hover(
             progress_bar(range.clone(), elapsed).height(10),
-            slider(range, elapsed, TrackerMsg::ProgressSliderChanged).height(10),
+            slider(range, elapsed, TrackerMsg::ProgressSliderChanged)
+                .on_release(TrackerMsg::ProgressSliderReleased(elapsed))
+                .height(10),
         );
+
+        let next_button = button(">|").on_press(TrackerMsg::Next);
+        let previous_button = button("|<").on_press(TrackerMsg::Previous);
 
         let pause_play_button = {
             let (button_str, button_message) = if self.paused {
                 ("||", TrackerMsg::Play)
             } else {
-                ("|>", TrackerMsg::Pause)
+                ("▶", TrackerMsg::Pause)
             };
 
             button(button_str).on_press(button_message)
         };
 
         let volume_slider = slider(0.0..=1.0, self.volume, TrackerMsg::UpdateVolume);
-
-        column![
-            progress_bar,
-            row![
-                column![duration_display].width(Length::FillPortion(1)),
-                column![pause_play_button]
-                    .align_items(Alignment::Center)
-                    .width(Length::FillPortion(1)),
-                column![volume_slider.width(100)]
-                    .align_items(Alignment::End)
-                    .width(Length::FillPortion(1)),
+        Element::new(
+            column![
+                progress_bar,
+                row![
+                    row![duration_display].width(Length::Fill),
+                    column![row![previous_button, pause_play_button, next_button]]
+                        .align_items(Alignment::Center)
+                        .width(Length::Fill),
+                    column![volume_slider.width(100)]
+                        .align_items(Alignment::End)
+                        .width(Length::Fill),
+                ]
+                .padding(10)
+                .align_items(Alignment::Center)
             ]
-            .width(Length::Fill)
-        ]
-        .width(Length::Fill)
-        .into()
+            .width(Length::Fill),
+        )
     }
 
     pub fn update(&mut self, signal: TrackerMsg) -> Command<TrackerMsg> {

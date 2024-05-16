@@ -96,13 +96,16 @@ impl SearchWindow {
                     let selected = mode.contains(idx);
                     let style = scheme.song_appearance.update(selected);
                     droppable(
-                        Container::new(match cached_map.get(key) {
-                            Some(songc) => {
-                                let song = songc.lock().unwrap();
-                                song.as_data().row()
-                            }
-                            None => SongData::mystery_with_id(key.clone()).row(),
-                        })
+                        Container::new(
+                            Element::new(match cached_map.get(key) {
+                                Some(songc) => {
+                                    let song = songc.lock().unwrap();
+                                    song.as_data().row(false)
+                                }
+                                None => SongData::mystery_with_id(key.clone()).row(false),
+                            })
+                            .map(move |_| SWMessage::SelectSong(idx)),
+                        )
                         .style(move |_| style),
                     )
                     .on_drop(move |pt, rec| SWMessage::Drop(key.clone(), pt, rec))
