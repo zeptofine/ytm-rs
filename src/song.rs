@@ -83,6 +83,17 @@ impl IDed for Song {
         &self.id
     }
 }
+
+pub fn format_duration(d: &f32) -> String {
+    let minutes = d / 60.0;
+    let hours = minutes / 60.0;
+    let seconds = (d % 60.0).floor() as u8;
+    match hours.floor() == 0.0 {
+        true => format!("{}:{:0>2}", minutes.floor(), seconds),
+        false => format!("{}:{:0>2}:{:0>2}", hours.floor(), minutes.floor(), seconds,),
+    }
+}
+
 pub struct SongData {
     pub title: String,
     pub channel: String,
@@ -113,16 +124,6 @@ impl SongData {
         self.handle = Some(handle);
     }
 
-    fn format_duration(&self) -> String {
-        let minutes = self.duration / 60.0;
-        let hours = minutes / 60.0;
-        let seconds = (self.duration % 60.0).floor() as u8;
-        match hours.floor() == 0.0 {
-            true => format!("{}:{:0>2}", minutes.floor(), seconds),
-            false => format!("{}:{:0>2}:{:0>2}", hours.floor(), minutes.floor(), seconds,),
-        }
-    }
-
     fn format_artists(&self) -> String {
         match &self.artists {
             None => self.channel.clone(),
@@ -145,7 +146,7 @@ impl SongData {
         r = r.push(
             column![
                 text(self.title.clone()),
-                text(self.format_duration()),
+                text(format_duration(&self.duration)),
                 text(self.format_artists()),
             ]
             .spacing(1)

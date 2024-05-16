@@ -13,13 +13,12 @@ use iced::{
         container::{Container, Id as CId},
         row, scrollable, Space,
     },
-    Alignment, Command as Cm, Element, Length, Subscription,
+    Alignment, Color, Command as Cm, Element, Length, Subscription,
 };
-use iced_drop::zones_on_point;
 use reqwest::Url;
 
 use crate::{
-    audio::YTMRSAudioManager,
+    audio::{AudioProgressTracker, TrackerMsg, YTMRSAudioManager},
     backend_handler::{BackendHandler, BackendLaunchStatus, RequestResult},
     caching::{FileCache, FilePathPair},
     response_types::{YTResponseError, YTResponseType},
@@ -31,7 +30,7 @@ use crate::{
         TreeDirected, UpdateResult,
     },
     styling::{BasicYtmrsScheme, FullYtmrsScheme},
-    user_input::{InputMessage, SelectionMode, UserInputs},
+    user_input::{InputMessage, UserInputs},
 };
 
 #[derive(Debug)]
@@ -43,7 +42,7 @@ pub struct Tickers {
 impl Default for Tickers {
     fn default() -> Self {
         Self {
-            cache: (true, time::Duration::from_secs(4)),
+            cache: (true, time::Duration::from_secs(20)),
             backend_status: (true, time::Duration::from_secs(10)),
             playing_status: (false, time::Duration::from_secs(1)),
         }
@@ -107,6 +106,8 @@ pub struct Ytmrs {
     search: SearchWindow,
 
     audio_manager: YTMRSAudioManager,
+    audio_tracker: AudioProgressTracker,
+
     tickers: Tickers,
     backend_handler: BackendHandler,
     pub settings: YTMRSettings,
@@ -137,6 +138,7 @@ pub enum YtmrsMsg {
     InputMessage(InputMessage),
     SearchWindowMessage(SWMessage),
     SongOpMsg(SongOpMessage),
+    AudioTrackerMessage(TrackerMsg),
 
     ModifierChanged(keyboard::Modifiers),
 }
@@ -187,17 +189,21 @@ impl Ytmrs {
         .width(Length::Fill);
 
         let base_drop_target = Container::new(Space::with_height(Length::Fill))
-            .height(Length::Shrink)
+            // .height(Length::Shrink)
             .width(Length::Fill)
             .id(CId::new("base_drop_target"));
 
-        let constructor_row = column![constructor, base_drop_target];
+        let tracker = self.audio_tracker.view().map(YtmrsMsg::AudioTrackerMessage);
 
-        column![row![input, backend_status], row![search, constructor_row]]
-            .align_items(Alignment::Center)
-            .spacing(20)
-            .padding(10)
-            .into()
+        column![
+            row![input, backend_status],
+            row![search, column![constructor, base_drop_target]],
+            tracker
+        ]
+        .align_items(Alignment::Center)
+        .spacing(20)
+        .padding(10)
+        .into()
     }
 
     pub fn update(&mut self, message: YtmrsMsg) -> Cm<YtmrsMsg> {
@@ -333,6 +339,23 @@ impl Ytmrs {
                     UpdateResult::None => Cm::none(),
                 }
             }
+            YtmrsMsg::AudioTrackerMessage(msg) => match &msg {
+                TrackerMsg::Pause => todo!(),
+                TrackerMsg::Play => todo!(),
+                TrackerMsg::Next => todo!(),
+                TrackerMsg::Previous => todo!(),
+                TrackerMsg::UpdateVolume(_) => todo!(),
+                TrackerMsg::ProgressSliderChanged(_) => self
+                    .audio_tracker
+                    .update(msg)
+                    .map(YtmrsMsg::AudioTrackerMessage),
+                TrackerMsg::ProgressSliderReleased(v) => {
+                    self.audio_manager.seek(v);
+                    self.audio_tracker
+                        .update(msg)
+                        .map(YtmrsMsg::AudioTrackerMessage)
+                }
+            },
             YtmrsMsg::HandleZones(song_key, zones) => {
                 if zones.is_empty() {
                     return Cm::none();
@@ -397,7 +420,10 @@ impl Ytmrs {
                 self.backend_handler.status = BackendLaunchStatus::Unknown;
                 todo!()
             }
-            YtmrsMsg::PlayingStatusTick => todo!(),
+            YtmrsMsg::PlayingStatusTick => {
+                self.audio_tracker.update_from_manager(&self.audio_manager);
+                Cm::none()
+            }
         };
         command
     }
@@ -504,7 +530,7 @@ impl Ytmrs {
             println!["   {:?} arcs changed in constructor", diff];
         }
 
-        let unused: Vec<String> = self.cache.songs.find_unused_itmes().collect();
+        let unused: Vec<String> = self.cache.songs.find_unused_items().collect();
         let unused_count = unused.len();
         self.cache.songs.drop_from_cache(unused);
         println!["   {:?} songs dropped from cache", unused_count];

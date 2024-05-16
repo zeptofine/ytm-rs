@@ -511,11 +511,11 @@ mod tests {
 
     #[test]
     pub fn tester() {
-        let ops: RSO = RSO::SingleRandom(vec![
+        let ops: RSO = RSO::PlayOnce(vec![
             RSO::SinglePlay("".to_string()),
-            RSO::RandomPlay(vec![
+            RSO::PlayOnce(vec![
                 RSO::SinglePlay("".to_string()),
-                RSO::SingleRandom(vec![
+                RSO::RandomPlay(vec![
                     RSO::SinglePlay("".to_string()),
                     RSO::SinglePlay("".to_string()),
                 ]),

@@ -30,7 +30,7 @@ pub enum ActualRecursiveOps {
 }
 impl ActualRecursiveOps {
     fn as_str(&self) -> &'static str {
-        match self {
+        match &self {
             ActualRecursiveOps::PlayOnce => CONSTRUCTOR_CHOICES[0],
             ActualRecursiveOps::LoopNTimes => CONSTRUCTOR_CHOICES[1],
             ActualRecursiveOps::Stretch => CONSTRUCTOR_CHOICES[2],

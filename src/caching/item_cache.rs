@@ -27,8 +27,15 @@ pub struct FileCache<T: Serialize + for<'de> Deserialize<'de> + IDed> {
     pub filepath: PathBuf,
 }
 
-pub fn to_hash_map<T: IDed>(items: impl Iterator<Item = T>) -> HashMap<String, T> {
-    items.map(|s| (s.id().to_string(), s)).collect()
+macro_rules! to_hash_map {
+    ($items:expr) => {{
+        // let mut map = HashMap::new();
+        // $items.iter().for(|item| {
+        //     map.insert(item.id().to_string(), item);
+        // });
+        // map
+        $items.map(|item| (item.id().to_string(), item)).collect()
+    }};
 }
 
 impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
@@ -42,7 +49,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
 
     /// Filters out the items that have only one refcount,
     /// meaning they are no longer being used by anything other than the map
-    pub fn find_unused_itmes(&self) -> impl Iterator<Item = String> + '_ {
+    pub fn find_unused_items(&self) -> impl Iterator<Item = String> + '_ {
         self.map.iter().filter_map(|(key, s)| {
             let count = Arc::strong_count(s);
             match count == 1 {
@@ -151,7 +158,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
         items: impl Iterator<Item = T>,
         overwrite: bool,
     ) -> Result<(), async_std::io::Error> {
-        let mut items: HashMap<String, T> = to_hash_map(items);
+        let mut items: HashMap<String, T> = to_hash_map!(items);
 
         let file_path = &self.filepath;
         let tempfile = file_path.with_extension("ndjson.tmp");
@@ -166,7 +173,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
                     let _lock = self.lock.lock().unwrap();
                     if let Ok(itemlist) = FileCache::read_items_from_ndjson(file_path) {
                         // Filter through the lines, find existing keys and skip broken lines
-                        Self::filter_file_itmes(itemlist, overwrite, &mut items).collect()
+                        Self::filter_file_items(itemlist, overwrite, &mut items).collect()
                     } else {
                         vec![vec![]]
                     }
@@ -203,7 +210,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
         items: impl Iterator<Item = T>,
         overwrite: bool,
     ) -> Result<(), async_std::io::Error> {
-        let mut items = to_hash_map(items);
+        let mut items: HashMap<String, T> = to_hash_map!(items);
 
         let file_path = pth.as_ref();
         let tempfile = file_path.with_extension("ndjson.tmp");
@@ -216,7 +223,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
                 // Read the original list
                 if let Ok(itemlist) = FileCache::read_items_from_ndjson(file_path) {
                     // Filter through the lines, find existing keys and skip broken lines
-                    let valid_items = Self::filter_file_itmes(itemlist, overwrite, &mut items);
+                    let valid_items = Self::filter_file_items(itemlist, overwrite, &mut items);
 
                     for bytes in valid_items {
                         out.write(&bytes).await?;
@@ -240,7 +247,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
         Ok(())
     }
 
-    fn filter_file_itmes<'a>(
+    fn filter_file_items<'a>(
         items: impl Iterator<Item = LineItemPair<T>> + 'a,
         overwrite: bool,
         filter: &'a mut HashMap<String, T>,
@@ -356,7 +363,7 @@ mod tests {
     fn checking_unused() {
         let songs = vec![Song::basic(), Song::basic()];
         let first_key = songs[0].id.clone();
-        let keys: HashSet<SongKey> = songs.clone().iter().map(|s| s.id.clone()).collect();
+        let keys: HashSet<SongKey> = songs.iter().map(|s| s.id.clone()).collect();
 
         let tmpfile = random_file();
         let mut sc = FileCache {
@@ -371,7 +378,7 @@ mod tests {
         assert![extension_result.is_ok()];
 
         sc.fetch(&keys);
-        let mut unused: Vec<_> = sc.find_unused_itmes().collect();
+        let mut unused: Vec<_> = sc.find_unused_items().collect();
         println!["{sc:?}"];
         println!["Unused songs before: {:?}", unused];
         assert_eq![unused.len(), 2];
@@ -382,11 +389,11 @@ mod tests {
             let song = guards[&first_key].lock();
             println!["Captured song: {:?}", song];
 
-            unused = sc.find_unused_itmes().collect();
+            unused = sc.find_unused_items().collect();
             println!["Unused songs during: {:?}", unused];
             assert_eq![unused.len(), 1];
         }
-        unused = sc.find_unused_itmes().collect();
+        unused = sc.find_unused_items().collect();
         println!["Unused songs after: {:?}", unused];
         assert_eq![unused.len(), 2];
     }
@@ -409,14 +416,14 @@ mod tests {
             println!["{r:?}"];
             assert![r.is_ok()];
         }
-        let mut unused: Vec<_> = sc.find_unused_itmes().collect();
+        let mut unused: Vec<_> = sc.find_unused_items().collect();
         assert_eq![unused.len(), 2];
         sc.drop_from_cache([first_key]);
-        unused = sc.find_unused_itmes().collect();
+        unused = sc.find_unused_items().collect();
         assert_eq![unused.len(), 1];
 
         sc.drop_from_cache(unused);
-        unused = sc.find_unused_itmes().collect();
+        unused = sc.find_unused_items().collect();
         assert_eq![unused.len(), 0];
     }
 }

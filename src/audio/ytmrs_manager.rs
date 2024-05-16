@@ -29,8 +29,8 @@ impl YTMRSAudioManager {
         }
     }
 
-    pub fn is_playing(&self) -> bool {
-        self.current_song.clone().is_some_and(|s| !s.paused())
+    pub fn is_paused(&self) -> bool {
+        self.current_song.as_ref().is_some_and(|s| s.paused())
     }
 
     pub fn play(&mut self) {
@@ -59,24 +59,23 @@ impl YTMRSAudioManager {
         }
     }
 
-    pub fn seek(&mut self, pos: Duration) {
+    pub fn seek(&mut self, secs: &f32) {
         if let Some(song) = &mut self.current_song {
-            let secs = pos.as_secs_f32();
             let index = (secs * song.sample_rate() as f32) as usize;
             song.seek_to_index(index);
         }
     }
 
-    pub fn position(&self) -> Option<Duration> {
-        self.current_song.as_ref().map(|song| {
-            let index = song.index();
-            let secs = index as f32 / song.sample_rate() as f32;
-            Duration::from_secs_f32(secs)
-        })
+    pub fn elapsed(&self) -> Option<f32> {
+        self.current_song
+            .as_ref()
+            .map(|song| song.index() as f32 / song.sample_rate() as f32)
     }
 
-    pub fn total_duration(&self) -> Option<Duration> {
-        self.current_song.as_ref().map(|s| s.duration())
+    pub fn total(&self) -> Option<f32> {
+        self.current_song
+            .as_ref()
+            .map(|s| s.duration().as_secs_f32())
     }
 
     pub fn play_once(&mut self, song: &PathBuf) {
