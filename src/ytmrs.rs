@@ -2,6 +2,7 @@ use std::{
     collections::{HashSet, VecDeque},
     fmt::Debug,
     path::PathBuf,
+    sync::{Arc, Mutex},
     time,
 };
 
@@ -109,7 +110,7 @@ pub struct Ytmrs {
     audio_tracker: AudioProgressTracker,
 
     tickers: Tickers,
-    backend_handler: BackendHandler,
+    backend_handler: Arc<Mutex<BackendHandler>>,
     pub settings: YTMRSettings,
 
     cache: YtmrsCache,
@@ -144,9 +145,10 @@ pub enum YtmrsMsg {
 }
 
 impl Ytmrs {
-    pub fn new(settings: YTMRSettings) -> Self {
+    pub fn new(settings: YTMRSettings, backend_handler: Arc<Mutex<BackendHandler>>) -> Self {
         Self {
             settings,
+            backend_handler,
             ..Self::default()
         }
     }
@@ -156,7 +158,8 @@ impl Ytmrs {
             .operation_constructor
             .update_cache(&mut self.cache.songs);
 
-        self.backend_handler = BackendHandler::load(None);
+        let mut backend = self.backend_handler.lock().unwrap();
+        *backend = BackendHandler::load(None);
 
         Cm::none()
     }
@@ -175,7 +178,9 @@ impl Ytmrs {
     pub fn view(&self, scheme: FullYtmrsScheme) -> Element<YtmrsMsg> {
         let input = self.inputs.view().map(YtmrsMsg::InputMessage);
 
-        let backend_status: Element<YtmrsMsg> = self.backend_handler.view();
+        let backend = self.backend_handler.lock().unwrap();
+
+        let backend_status = backend.status.as_string();
 
         let search = self.search.view(&scheme).map(YtmrsMsg::SearchWindowMessage);
 
@@ -231,6 +236,8 @@ impl Ytmrs {
                 match Url::parse(&self.inputs.url) {
                     Ok(_) => Cm::perform(
                         self.backend_handler
+                            .lock()
+                            .unwrap()
                             .request_info(self.inputs.url.clone())
                             .unwrap(),
                         YtmrsMsg::RequestRecieved,
@@ -240,6 +247,8 @@ impl Ytmrs {
                         println!["Failed to parse: \"{}\". assuming it's a search query", e];
                         Cm::perform(
                             self.backend_handler
+                                .lock()
+                                .unwrap()
                                 .request_search(self.inputs.url.clone())
                                 .unwrap(),
                             YtmrsMsg::RequestRecieved,
@@ -415,13 +424,14 @@ impl Ytmrs {
                 Cm::none()
             }
             YtmrsMsg::BackendStatusTick => {
-                self.backend_handler.poll();
+                self.backend_handler.lock().unwrap().poll();
                 Cm::none()
             }
             YtmrsMsg::BackendStatusPollSuccess => Cm::none(),
             YtmrsMsg::BackendStatusPollFailure(e) => {
                 println!["Polling failure: {:?}", e];
-                self.backend_handler.status = BackendLaunchStatus::Unknown;
+                let mut backend = self.backend_handler.lock().unwrap();
+                backend.status = BackendLaunchStatus::Unknown;
                 todo!()
             }
             YtmrsMsg::PlayingStatusTick => {

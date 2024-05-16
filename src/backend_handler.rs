@@ -43,6 +43,17 @@ pub enum BackendLaunchStatus {
     Failed(std::io::Error),
     Exited(usize), // exit code
 }
+impl BackendLaunchStatus {
+    pub fn as_string(&self) -> &'static str {
+        match self {
+            BackendLaunchStatus::Unknown => "?",
+            BackendLaunchStatus::Launched(_) => ":)",
+            BackendLaunchStatus::Failed(_) => ":(",
+            BackendLaunchStatus::PythonMissing => "missing",
+            BackendLaunchStatus::Exited(_) => "D:",
+        }
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct BackendHandler {
@@ -203,24 +214,6 @@ impl BackendHandler {
                 Err(_) => RequestResult::JsonParseError,
                 Ok(j) => RequestResult::Success(j),
             },
-        }
-    }
-
-    pub fn view(&self) -> Element<YtmrsMsg> {
-        match &self.status {
-            BackendLaunchStatus::Unknown => text("Backend status: ?").into(),
-            BackendLaunchStatus::Launched(_) => hover(
-                button("Backend status: :)"),
-                text("Backend is running normally"),
-            ),
-            BackendLaunchStatus::Failed(e) => {
-                hover(button("Backend status: :("), text(format!("{:?}", e)))
-            }
-            BackendLaunchStatus::Exited(code) => hover(
-                button("Backend status: D:"),
-                text(format!("Exit code: {:?}", code)),
-            ),
-            BackendLaunchStatus::PythonMissing => text("Backend status: missing").into(),
         }
     }
 }

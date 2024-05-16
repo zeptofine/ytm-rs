@@ -3,10 +3,13 @@
 
 use std::fmt::Debug;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
-use iced::Color;
+use backend_handler::BackendHandler;
+use iced::advanced::Application;
 use iced::{alignment::Horizontal, Command as Cm, Element, Length, Subscription};
+use iced::{executor, Color, Renderer, Settings};
 use iced::{
     theme::{Palette, Theme},
     widget::{button, column, container, text},
@@ -26,6 +29,7 @@ mod thumbnails;
 mod user_input;
 mod ytmrs;
 
+use crate::backend_handler::{BackendLaunchStatus, ConnectionMode};
 use crate::{
     settings::{LoadError, SaveError, YTMRSettings},
     styling::{transition_scheme, SchemeState},
@@ -42,8 +46,9 @@ struct MainState {
     state: SchemeState,
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct Main {
+    backend: Arc<Mutex<BackendHandler>>,
     state: Option<MainState>,
 }
 
@@ -61,9 +66,33 @@ enum MAINMessage {
     UpdateVisibleBackground(SchemeState),
 }
 
-impl Main {
-    fn load() -> Cm<MAINMessage> {
-        Cm::perform(YTMRSettings::load_default(), MAINMessage::Loaded)
+impl Main {}
+
+impl Application for Main {
+    type Executor = executor::Default;
+
+    type Message = MAINMessage;
+
+    type Theme = Theme;
+
+    type Renderer = Renderer;
+
+    type Flags = Arc<Mutex<BackendHandler>>;
+
+    fn new(backend: Self::Flags) -> (Self, Cm<Self::Message>) {
+        let me = Self {
+            backend,
+            state: None,
+        };
+
+        (
+            me,
+            Cm::perform(YTMRSettings::load_default(), MAINMessage::Loaded),
+        )
+    }
+
+    fn title(&self) -> String {
+        "A cool song list".to_string()
     }
 
     fn theme(&self) -> Theme {
@@ -90,20 +119,13 @@ impl Main {
         }
     }
 
-    fn subscription(&self) -> Subscription<MAINMessage> {
-        match &self.state {
-            Some(state) => state.ytmrs.subscription().map(MAINMessage::YtmrsMessage),
-            None => Subscription::none(),
-        }
-    }
-
-    fn update(&mut self, message: MAINMessage) -> Cm<MAINMessage> {
+    fn update(&mut self, message: Self::Message) -> Cm<Self::Message> {
         match &mut self.state {
             None => match message {
                 MAINMessage::Loaded(o) => {
                     let (s, coms) = match o {
                         Ok(settings) => {
-                            let mut main = Ytmrs::new(settings);
+                            let mut main = Ytmrs::new(settings, self.backend.clone());
                             let commands = main.load().map(MAINMessage::YtmrsMessage);
                             (main, commands)
                         }
@@ -180,7 +202,14 @@ impl Main {
         }
     }
 
-    fn view(&self) -> Element<MAINMessage> {
+    fn subscription(&self) -> Subscription<MAINMessage> {
+        match &self.state {
+            Some(state) => state.ytmrs.subscription().map(MAINMessage::YtmrsMessage),
+            None => Subscription::none(),
+        }
+    }
+
+    fn view(&self) -> Element<'_, Self::Message, Self::Theme, Self::Renderer> {
         match &self.state {
             None => container(
                 text("Loading...")
@@ -209,12 +238,27 @@ impl Main {
 }
 
 pub fn main() -> iced::Result {
-    iced::program("A cool song list", Main::update, Main::view)
-        .load(Main::load)
-        .theme(Main::theme)
-        .subscription(Main::subscription)
-        .antialiasing(true)
-        .run()
+    let backend = Arc::new(Mutex::new(BackendHandler::default()));
+
+    let main = Main::run(Settings {
+        id: None,
+        flags: backend.clone(),
+        antialiasing: true,
+        ..Default::default()
+    });
+
+    println!["App exited"];
+
+    // If backend is owned by current process, try to kill it
+    {
+        let mut b = backend.lock().unwrap();
+        if let BackendLaunchStatus::Launched(ConnectionMode::Child(process, _)) = &mut b.status {
+            let _ = process.kill();
+            println!["Killed backend"];
+        }
+    }
+
+    main
 }
 
 // pub fn main() {
