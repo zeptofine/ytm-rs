@@ -283,6 +283,10 @@ pub fn main() -> iced::Result {
                 drag_and_drop: true,
                 skip_taskbar: false,
             },
+            #[cfg(target_os = "linux")]
+            platform_specific: window::settings::PlatformSpecific {
+                application_id: "YtmRs".to_string(),
+            },
             exit_on_close_request: true,
         },
         ..Default::default()
