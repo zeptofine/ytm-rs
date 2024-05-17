@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::IDed;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct FilePathPair {
     id: String,
     #[serde(skip_serializing_if = "Option::is_none")]

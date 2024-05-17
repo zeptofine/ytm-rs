@@ -14,7 +14,7 @@ use crate::{
     BACKGROUND_TRANSITION_DURATION, BACKGROUND_TRANSITION_RATE,
 };
 
-use super::{PickListStyle, PickMenuStyle};
+use super::{PickListStyle, PickMenuStyle, PlaybackButtonStyle};
 
 pub trait Interpolable {
     /// Interpolates between two colors, with a transition rate.
@@ -131,6 +131,7 @@ pub struct FullYtmrsScheme {
     pub scrollable_style: Box<ScrollableStyle>,
     pub pick_list_style: Box<PickListStyle>,
     pub pick_menu_style: Box<PickMenuStyle>,
+    pub playback_button_style: Box<PlaybackButtonStyle>,
 }
 
 #[derive(Debug, Clone)]

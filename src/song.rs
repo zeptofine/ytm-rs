@@ -3,8 +3,7 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 
 use iced::{
-    advanced::{self, image as iced_image},
-    border::Radius,
+    advanced::image as iced_image,
     widget::{self, button, column, hover, row, text, Image, Row},
     Alignment, Background, Border, Color, Element, Length, Shadow, Vector,
 };

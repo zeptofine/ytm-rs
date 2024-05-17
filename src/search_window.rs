@@ -32,12 +32,16 @@ impl SearchType {
 pub enum SWMessage {
     Drop(String, iced::Point, iced::Rectangle),
     HandleZones(String, Vec<(iced::advanced::widget::Id, iced::Rectangle)>),
+
+    SearchQueryChanged(String),
+    SearchQuerySubmitted,
     SimpleSelectSong(usize),
     SelectSong(usize),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchWindow {
+    pub search_query: String,
     pub search_type: SearchType,
     #[serde(skip)]
     pub cache: CacheInterface<Song>,
@@ -45,6 +49,7 @@ pub struct SearchWindow {
 impl Default for SearchWindow {
     fn default() -> Self {
         SearchWindow {
+            search_query: String::new(),
             search_type: SearchType::Tab(vec![], SelectionMode::None),
             cache: CacheInterface::default(),
         }
@@ -153,6 +158,11 @@ impl SearchWindow {
                 None,
             ),
             SWMessage::HandleZones(_, _) => todo!(),
+            SWMessage::SearchQueryChanged(s) => {
+                self.search_query = s;
+                Cm::none()
+            }
+            SWMessage::SearchQuerySubmitted => Cm::none(),
         }
     }
 }

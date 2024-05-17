@@ -9,7 +9,7 @@ use std::time::{Duration, SystemTime};
 use backend_handler::BackendHandler;
 use iced::advanced::Application;
 use iced::{alignment::Horizontal, Command as Cm, Element, Length, Subscription};
-use iced::{executor, Color, Renderer, Settings};
+use iced::{executor, window, Color, Renderer, Settings, Size};
 use iced::{
     theme::{Palette, Theme},
     widget::{button, column, container, text},
@@ -244,6 +244,24 @@ pub fn main() -> iced::Result {
         id: None,
         flags: backend.clone(),
         antialiasing: true,
+        window: window::Settings {
+            size: Size::new(1024.0, 512.0),
+            position: window::Position::Centered,
+            min_size: None,
+            max_size: None,
+            visible: true,
+            resizable: true,
+            decorations: true,
+            transparent: true,
+            level: window::Level::Normal,
+            icon: None,
+            platform_specific: window::settings::PlatformSpecific {
+                parent: None,
+                drag_and_drop: true,
+                skip_taskbar: false,
+            },
+            exit_on_close_request: true,
+        },
         ..Default::default()
     });
 

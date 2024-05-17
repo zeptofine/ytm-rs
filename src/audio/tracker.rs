@@ -1,11 +1,34 @@
 use iced::{
-    widget::{button, column, hover, progress_bar, row, slider, text},
+    advanced,
+    widget::{button, column, hover, progress_bar, row, slider, text, Svg},
     Alignment, Command, Element, Length,
 };
+use once_cell::sync::Lazy;
 
 use crate::{song::format_duration, styling::FullYtmrsScheme};
 
 use super::YTMRSAudioManager;
+
+static PLAY_SVG: Lazy<advanced::svg::Handle> = Lazy::new(|| {
+    advanced::svg::Handle::from_memory(include_bytes!(
+        "../../assets/play_arrow_40dp_FILL0_wght400_GRAD0_opsz40.svg"
+    ))
+});
+static PAUSE_SVG: Lazy<advanced::svg::Handle> = Lazy::new(|| {
+    advanced::svg::Handle::from_memory(include_bytes!(
+        "../../assets/pause_40dp_FILL0_wght400_GRAD0_opsz40.svg"
+    ))
+});
+static SKIP_NEXT_SVG: Lazy<advanced::svg::Handle> = Lazy::new(|| {
+    advanced::svg::Handle::from_memory(include_bytes!(
+        "../../assets/skip_next_40dp_FILL0_wght400_GRAD0_opsz40.svg"
+    ))
+});
+static SKIP_PREVIOUS_SVG: Lazy<advanced::svg::Handle> = Lazy::new(|| {
+    advanced::svg::Handle::from_memory(include_bytes!(
+        "../../assets/skip_previous_40dp_FILL0_wght400_GRAD0_opsz40.svg"
+    ))
+});
 
 #[derive(Debug, Clone)]
 pub enum TrackerMsg {
@@ -49,7 +72,7 @@ impl AudioProgressTracker {
         self.volume = manager.volume();
     }
 
-    pub fn view(&self, _scheme: &FullYtmrsScheme) -> Element<TrackerMsg> {
+    pub fn view(&self, scheme: &FullYtmrsScheme) -> Element<TrackerMsg> {
         let elapsed = self.elapsed.unwrap_or(0.0);
         let range = 0.0..=self.total.unwrap_or(1.0);
 
@@ -58,7 +81,6 @@ impl AudioProgressTracker {
             format_duration(&elapsed),
             format_duration(range.end())
         ));
-
         let progress_bar = hover(
             progress_bar(range.clone(), elapsed).height(10),
             slider(range, elapsed, TrackerMsg::ProgressSliderChanged)
@@ -66,17 +88,30 @@ impl AudioProgressTracker {
                 .height(10),
         );
 
-        let next_button = button(">|").on_press(TrackerMsg::Next);
-        let previous_button = button("|<").on_press(TrackerMsg::Previous);
+        let next_button = {
+            let button_style = scheme.playback_button_style.clone();
+            button(Svg::new(SKIP_NEXT_SVG.clone()).width(32).height(32))
+                .on_press(TrackerMsg::Next)
+                .style(move |_, s| button_style.clone().update(s))
+        };
+        let previous_button = {
+            let button_style = scheme.playback_button_style.clone();
+            button(Svg::new(SKIP_PREVIOUS_SVG.clone()).width(32).height(32))
+                .on_press(TrackerMsg::Previous)
+                .style(move |_, s| button_style.clone().update(s))
+        };
 
         let pause_play_button = {
-            let (button_str, button_message) = if self.paused {
-                ("||", TrackerMsg::Play)
+            let (button_image, button_message) = if self.paused {
+                (PLAY_SVG.clone(), TrackerMsg::Play)
             } else {
-                ("▶", TrackerMsg::Pause)
+                (PAUSE_SVG.clone(), TrackerMsg::Pause)
             };
+            let button_style = scheme.playback_button_style.clone();
 
-            button(button_str).on_press(button_message)
+            button(Svg::new(button_image).width(32).height(32))
+                .on_press(button_message)
+                .style(move |_, s| button_style.clone().update(s))
         };
 
         let volume_slider = slider(0.0..=1.0, self.volume, TrackerMsg::UpdateVolume);
@@ -110,7 +145,7 @@ impl AudioProgressTracker {
             TrackerMsg::Next => todo!(),
             TrackerMsg::Previous => todo!(),
             TrackerMsg::UpdateVolume(_) => todo!(),
-            TrackerMsg::ProgressSliderReleased(_) => todo!(),
+            TrackerMsg::ProgressSliderReleased(_) => Command::none(),
         }
     }
 }

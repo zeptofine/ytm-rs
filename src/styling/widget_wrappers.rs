@@ -1,7 +1,7 @@
 use iced::{
     overlay::menu,
     widget::{
-        container, pick_list,
+        button, container, pick_list,
         scrollable::{self, Scrollbar, Scroller},
     },
     Background, Border, Color, Theme,
@@ -96,6 +96,33 @@ impl ScrollableStyle {
             }
             style
         })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PlaybackButtonStyle(pub button::Style);
+impl Default for PlaybackButtonStyle {
+    fn default() -> Self {
+        Self(button::Style {
+            text_color: Color::WHITE,
+            border: Border::rounded(2),
+            background: Some(Background::Color(Color::TRANSPARENT)),
+            ..Default::default()
+        })
+    }
+}
+impl PlaybackButtonStyle {
+    pub fn update(self, status: button::Status) -> button::Style {
+        let mut style = self.0;
+        match status {
+            button::Status::Active => {}
+            button::Status::Hovered => {
+                style.background = Some(Background::Color(Color::new(1., 1., 1., 0.2)));
+            }
+            button::Status::Pressed => style.background = Some(Background::Color(Color::WHITE)),
+            button::Status::Disabled => {}
+        }
+        style
     }
 }
 

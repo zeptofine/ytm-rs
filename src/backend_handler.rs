@@ -1,9 +1,6 @@
 use std::{future::Future, process, time::Duration};
 
-use iced::{
-    widget::{button, hover, text},
-    Command, Element,
-};
+use iced::Command;
 use reqwest::{Client, Url};
 use serde::Serialize;
 
