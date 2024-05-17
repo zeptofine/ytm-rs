@@ -212,7 +212,7 @@ impl Ytmrs {
             .align_items(Alignment::Center)
             .spacing(20),
         )
-        .explain(Color::WHITE)
+        // .explain(Color::WHITE)
     }
 
     pub fn update(&mut self, message: YtmrsMsg) -> Cm<YtmrsMsg> {

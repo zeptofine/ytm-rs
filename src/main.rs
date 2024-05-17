@@ -221,18 +221,34 @@ impl Application for Main {
             .height(Length::Fill)
             .center_y()
             .into(),
-            Some(state) => container(column![
-                button(if state.saving { "saving..." } else { "save" }).on_press(MAINMessage::Save),
-                state
-                    .ytmrs
-                    .view(state.state.first_choice().clone())
-                    .map(MAINMessage::YtmrsMessage)
-            ])
-            .style(|_| container::Style {
-                background: Some(state.state.first_choice().colors.to_background()),
-                ..Default::default()
-            })
-            .into(),
+
+            Some(state) => {
+                let contents = {
+                    let c = column![
+                        button(if state.saving { "saving..." } else { "save" })
+                            .on_press(MAINMessage::Save),
+                        state
+                            .ytmrs
+                            .view(state.state.first_choice().clone())
+                            .map(MAINMessage::YtmrsMessage),
+                    ];
+
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        c
+                    }
+                    #[cfg(target_os = "macos")]
+                    {
+                        c.align_items(iced::Alignment::End)
+                    }
+                };
+                container(contents)
+                    .style(|_| container::Style {
+                        background: Some(state.state.first_choice().colors.to_background()),
+                        ..Default::default()
+                    })
+                    .into()
+            }
         }
     }
 }
@@ -255,6 +271,13 @@ pub fn main() -> iced::Result {
             transparent: true,
             level: window::Level::Normal,
             icon: None,
+            #[cfg(target_os = "macos")]
+            platform_specific: window::settings::PlatformSpecific {
+                title_hidden: true,
+                titlebar_transparent: true,
+                fullsize_content_view: true,
+            },
+            #[cfg(target_os = "windows")]
             platform_specific: window::settings::PlatformSpecific {
                 parent: None,
                 drag_and_drop: true,
