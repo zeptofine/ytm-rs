@@ -18,13 +18,13 @@ const SKIP_NEXT_SVG_DATA: &[u8] =
 const SKIP_PREVIOUS_SVG_DATA: &[u8] =
     include_bytes!("../../assets/skip_previous_40dp_FILL0_wght400_GRAD0_opsz40.svg");
 
-static PLAY_SVG: Lazy<advanced::svg::Handle> =
+pub static PLAY_SVG: Lazy<advanced::svg::Handle> =
     Lazy::new(|| advanced::svg::Handle::from_memory(PLAY_SVG_DATA));
-static PAUSE_SVG: Lazy<advanced::svg::Handle> =
+pub static PAUSE_SVG: Lazy<advanced::svg::Handle> =
     Lazy::new(|| advanced::svg::Handle::from_memory(PAUSE_SVG_DATA));
-static SKIP_NEXT_SVG: Lazy<advanced::svg::Handle> =
+pub static SKIP_NEXT_SVG: Lazy<advanced::svg::Handle> =
     Lazy::new(|| advanced::svg::Handle::from_memory(SKIP_NEXT_SVG_DATA));
-static SKIP_PREVIOUS_SVG: Lazy<advanced::svg::Handle> =
+pub static SKIP_PREVIOUS_SVG: Lazy<advanced::svg::Handle> =
     Lazy::new(|| advanced::svg::Handle::from_memory(SKIP_PREVIOUS_SVG_DATA));
 
 #[derive(Debug, Clone)]

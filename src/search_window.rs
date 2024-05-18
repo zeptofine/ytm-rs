@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use iced::{
     alignment::Horizontal,
     keyboard::Modifiers,
-    widget::{scrollable, Column, Container},
+    widget::{column, scrollable, text_input, Column, Container},
     Command as Cm, Element, Length,
 };
 use iced_drop::{droppable, zones_on_point};
@@ -41,7 +41,7 @@ pub enum SWMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchWindow {
-    pub search_query: String,
+    pub query: String,
     pub search_type: SearchType,
     #[serde(skip)]
     pub cache: CacheInterface<Song>,
@@ -49,7 +49,7 @@ pub struct SearchWindow {
 impl Default for SearchWindow {
     fn default() -> Self {
         SearchWindow {
-            search_query: String::new(),
+            query: String::new(),
             search_type: SearchType::Tab(vec![], SelectionMode::None),
             cache: CacheInterface::default(),
         }
@@ -92,45 +92,54 @@ impl SearchWindow {
 
         let cached_map: HashMap<_, _> = self.cache.get(&keys).collect();
 
-        match &self.search_type {
-            SearchType::Song(_) => {
-                todo!()
-            }
-            SearchType::Tab(v, mode) => {
-                let songs = v.iter().enumerate().map(|(idx, key)| {
-                    let selected = mode.contains(idx);
-                    let style = scheme.song_appearance.update(selected);
-                    droppable(
-                        Container::new(
-                            Element::new(match cached_map.get(key) {
-                                Some(songc) => {
-                                    let song = songc.lock().unwrap();
-                                    song.as_data().row(false)
-                                }
-                                None => SongData::mystery_with_id(key.clone()).row(false),
-                            })
-                            .map(move |_| SWMessage::SelectSong(idx)),
-                        )
-                        .style(move |_| style),
-                    )
-                    .on_drop(move |pt, rec| SWMessage::Drop(key.clone(), pt, rec))
-                    .on_click(SWMessage::SimpleSelectSong(idx))
-                    .on_single_click(SWMessage::SelectSong(idx))
-                    .into()
-                });
+        let search_query = text_input("Enter query...", &self.query)
+            .on_input(SWMessage::SearchQueryChanged)
+            .on_submit(SWMessage::SearchQuerySubmitted);
 
-                scrollable(
-                    Container::new(Column::with_children(songs).width(Length::Fill))
-                        .align_x(Horizontal::Left)
-                        .width(Length::Fill)
-                        .max_width(400)
-                        .padding(0),
-                )
-                .style(scheme.scrollable_style.clone().update())
-                .into()
+        column![
+            search_query,
+            match &self.search_type {
+                SearchType::Song(_) => {
+                    todo!()
+                }
+                SearchType::Tab(v, mode) => {
+                    let songs = v.iter().enumerate().map(|(idx, key)| {
+                        let selected = mode.contains(idx);
+                        let style = scheme.song_appearance.update(selected);
+                        droppable(
+                            Container::new(
+                                Element::new(match cached_map.get(key) {
+                                    Some(songc) => {
+                                        let song = songc.lock().unwrap();
+                                        song.as_data().row(false)
+                                    }
+                                    None => SongData::mystery_with_id(key.clone()).row(false),
+                                })
+                                .map(move |_| SWMessage::SelectSong(idx)),
+                            )
+                            .style(move |_| style),
+                        )
+                        .on_drop(move |pt, rec| SWMessage::Drop(key.clone(), pt, rec))
+                        .on_click(SWMessage::SimpleSelectSong(idx))
+                        .on_single_click(SWMessage::SelectSong(idx))
+                        .into()
+                    });
+
+                    Element::new(
+                        scrollable(
+                            Container::new(Column::with_children(songs).width(Length::Fill))
+                                .align_x(Horizontal::Left)
+                                .width(Length::Fill)
+                                .max_width(400)
+                                .padding(0),
+                        )
+                        .style(scheme.scrollable_style.clone().update()),
+                    )
+                }
+                SearchType::Search(_) => todo!(),
             }
-            SearchType::Search(_) => todo!(),
-        }
+        ]
+        .into()
     }
 
     pub fn update(&mut self, msg: SWMessage, mods: &Modifiers) -> Cm<SWMessage> {
@@ -159,7 +168,7 @@ impl SearchWindow {
             ),
             SWMessage::HandleZones(_, _) => todo!(),
             SWMessage::SearchQueryChanged(s) => {
-                self.search_query = s;
+                self.query = s;
                 Cm::none()
             }
             SWMessage::SearchQuerySubmitted => Cm::none(),

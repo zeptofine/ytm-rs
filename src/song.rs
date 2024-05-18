@@ -4,11 +4,12 @@ use serde::{Deserialize, Serialize};
 
 use iced::{
     advanced::image as iced_image,
-    widget::{self, button, column, hover, row, text, Image, Row},
+    alignment::{Horizontal, Vertical},
+    widget::{self, button, column, container, hover, row, text, Image, Row, Svg},
     Alignment, Background, Border, Color, Element, Length, Shadow, Vector,
 };
 
-use crate::{caching::IDed, response_types::UrlString, settings::SongKey};
+use crate::{audio::PLAY_SVG, caching::IDed, response_types::UrlString, settings::SongKey};
 
 fn r(len: usize) -> String {
     thread_rng()
@@ -37,6 +38,15 @@ pub struct Song {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
     pub tags: Vec<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub thumbnail_cache_id: Option<String>,
+    #[serde(skip)]
+    pub thumbnail_handle: Option<iced_image::Handle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub song_cache_id: Option<String>,
 }
 
 impl Song {
@@ -65,6 +75,9 @@ impl Song {
                 .cycle()
                 .take(thread_rng().gen_range(0..=5))
                 .collect(),
+            thumbnail_cache_id: None,
+            thumbnail_handle: None,
+            song_cache_id: None,
         }
     }
 
@@ -74,7 +87,7 @@ impl Song {
             channel: self.channel.clone(),
             artists: self.artists.clone(),
             duration: self.duration,
-            handle: None,
+            handle: self.thumbnail_handle.clone(),
         }
     }
 }
@@ -124,10 +137,6 @@ impl SongData {
         }
     }
 
-    pub fn with_handle(&mut self, handle: iced_image::Handle) {
-        self.handle = Some(handle);
-    }
-
     fn format_artists(&self) -> String {
         match &self.artists {
             None => self.channel.clone(),
@@ -164,15 +173,15 @@ impl SongData {
 
     pub fn row<'a>(self, playable: bool) -> Row<'a, SongMessage> {
         let img = Self::image_or_placeholder(self.handle.clone(), 80, 80);
-        row![
+        let row = row![
             match playable {
                 false => img,
                 true => hover(
                     img,
                     button(
-                        text("▶")
-                            .horizontal_alignment(iced::alignment::Horizontal::Center)
-                            .vertical_alignment(iced::alignment::Vertical::Center)
+                        container(Svg::new(PLAY_SVG.clone()))
+                            .align_x(Horizontal::Center)
+                            .align_y(Vertical::Center)
                     )
                     .style(|_, _| widget::button::Style {
                         background: Some(Background::Color(Color::new(0., 0., 0., 0.75))),
@@ -200,9 +209,7 @@ impl SongData {
                 self.format_artists()
             )),]
             .width(Length::Fill),
-        ]
-        .spacing(8)
-        .padding(0)
-        .align_items(Alignment::Center)
+        ];
+        row.spacing(8).padding(0).align_items(Alignment::Center)
     }
 }

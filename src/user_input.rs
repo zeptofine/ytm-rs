@@ -2,12 +2,9 @@ use std::{cmp::Ordering, fmt::Debug, ops::RangeInclusive};
 
 use iced::{
     keyboard::{self, Modifiers},
-    widget::{column, text_input},
-    Command as Cm, Element,
+    widget::text_input,
 };
 use once_cell::sync::Lazy;
-
-static INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 
 #[derive(Debug, Clone, Default)]
 pub enum SelectionMode {
@@ -108,32 +105,5 @@ impl SelectionMode {
 
 #[derive(Debug, Default)]
 pub struct UserInputs {
-    pub url: String,
     pub modifiers: keyboard::Modifiers,
-}
-
-#[derive(Debug, Clone)]
-pub enum InputMessage {
-    UrlChanged(String),
-    UrlSubmitted,
-}
-
-impl UserInputs {
-    pub fn view(&self) -> Element<InputMessage> {
-        column![text_input("", &self.url)
-            .id(INPUT_ID.clone())
-            .on_input(InputMessage::UrlChanged)
-            .on_submit(InputMessage::UrlSubmitted)
-            .size(20)
-            .padding(5),]
-        .into()
-    }
-
-    pub fn update(&mut self, message: InputMessage) -> Cm<InputMessage> {
-        match message {
-            InputMessage::UrlChanged(s) => self.url = s,
-            InputMessage::UrlSubmitted => {}
-        }
-        Cm::none()
-    }
 }

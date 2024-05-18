@@ -14,24 +14,25 @@ use iced::{
         container::{Container, Id as CId},
         row, scrollable, Space,
     },
-    Alignment, Color, Command as Cm, Element, Length, Subscription,
+    Alignment, Command as Cm, Element, Length, Subscription,
 };
 use reqwest::Url;
 
 use crate::{
     audio::{AudioProgressTracker, TrackerMsg, YTMRSAudioManager},
     backend_handler::{BackendHandler, BackendLaunchStatus, RequestResult},
-    caching::{FileCache, FilePathPair},
+    caching::FileCache,
+    playlist::PlaylistMessage,
     response_types::{YTResponseError, YTResponseType},
     search_window::{SWMessage, SearchType, SearchWindow},
     settings::{project_data_dir, YTMRSettings},
     song::Song,
     song_operations::{
-        ConstructorItem, OperationTracker, SongOpConstructor, SongOpMessage, SongOpTracker,
-        TreeDirected, UpdateResult,
+        ConstructorItem, OperationTracker, SongOpConstructor, SongOpTracker, TreeDirected,
+        UpdateResult,
     },
     styling::{BasicYtmrsScheme, FullYtmrsScheme},
-    user_input::{InputMessage, UserInputs},
+    user_input::UserInputs,
 };
 
 #[derive(Debug)]
@@ -75,12 +76,6 @@ fn songs_path() -> PathBuf {
     path
 }
 
-fn file_paths_path() -> PathBuf {
-    let mut path = project_data_dir();
-    path.push("filepaths.ndjson");
-    path
-}
-
 fn playlists_directory() -> PathBuf {
     let mut path = project_data_dir();
     path.push("playlists");
@@ -90,13 +85,12 @@ fn playlists_directory() -> PathBuf {
 #[derive(Debug)]
 pub struct YtmrsCache {
     pub songs: FileCache<Song>,
-    pub file_paths: FileCache<FilePathPair>,
 }
+
 impl Default for YtmrsCache {
     fn default() -> Self {
         Self {
             songs: FileCache::new(songs_path()),
-            file_paths: FileCache::new(file_paths_path()),
         }
     }
 }
@@ -136,9 +130,8 @@ pub enum YtmrsMsg {
 
     SetNewBackground(String, BasicYtmrsScheme),
 
-    InputMessage(InputMessage),
     SearchWindowMessage(SWMessage),
-    SongOpMsg(SongOpMessage),
+    PlaylistMsg(PlaylistMessage),
     AudioTrackerMessage(TrackerMsg),
 
     ModifierChanged(keyboard::Modifiers),
@@ -155,11 +148,15 @@ impl Ytmrs {
 
     pub fn load(&mut self) -> Cm<YtmrsMsg> {
         self.settings
-            .operation_constructor
+            .playlist
+            .constructor
             .update_cache(&mut self.cache.songs);
 
         let mut backend = self.backend_handler.lock().unwrap();
-        *backend = BackendHandler::load(None);
+
+        if let BackendLaunchStatus::Unknown = backend.status {
+            *backend = BackendHandler::load(None);
+        }
 
         Cm::none()
     }
@@ -176,25 +173,21 @@ impl Ytmrs {
     }
 
     pub fn view(&self, scheme: FullYtmrsScheme) -> Element<YtmrsMsg> {
-        let input = self.inputs.view().map(YtmrsMsg::InputMessage);
-
         let backend = self.backend_handler.lock().unwrap();
-
         let backend_status = backend.status.as_string();
 
         let search = self.search.view(&scheme).map(YtmrsMsg::SearchWindowMessage);
 
-        let constructor = scrollable(
+        let current_playlist = scrollable(
             self.settings
-                .operation_constructor
+                .playlist
                 .view(&scheme)
-                .map(YtmrsMsg::SongOpMsg),
+                .map(YtmrsMsg::PlaylistMsg),
         )
         .style(scheme.scrollable_style.clone().update())
         .width(Length::Fill);
 
         let base_drop_target = Container::new(Space::with_height(Length::Fill))
-            // .height(Length::Shrink)
             .width(Length::Fill)
             .id(CId::new("base_drop_target"));
 
@@ -205,8 +198,8 @@ impl Ytmrs {
 
         Element::new(
             column![
-                row![input, backend_status],
-                row![search, column![constructor, base_drop_target]],
+                backend_status,
+                row![search, column![current_playlist, base_drop_target]],
                 tracker
             ]
             .align_items(Alignment::Center)
@@ -231,32 +224,6 @@ impl Ytmrs {
                 // }
                 Cm::none()
             }
-            YtmrsMsg::InputMessage(InputMessage::UrlSubmitted) => {
-                // Check if URL is valid
-                match Url::parse(&self.inputs.url) {
-                    Ok(_) => Cm::perform(
-                        self.backend_handler
-                            .lock()
-                            .unwrap()
-                            .request_info(self.inputs.url.clone())
-                            .unwrap(),
-                        YtmrsMsg::RequestRecieved,
-                    ),
-                    // URL failed to parse, try to search Youtube
-                    Err(e) => {
-                        println!["Failed to parse: \"{}\". assuming it's a search query", e];
-                        Cm::perform(
-                            self.backend_handler
-                                .lock()
-                                .unwrap()
-                                .request_search(self.inputs.url.clone())
-                                .unwrap(),
-                            YtmrsMsg::RequestRecieved,
-                        )
-                    }
-                }
-            }
-            YtmrsMsg::InputMessage(i) => self.inputs.update(i).map(YtmrsMsg::InputMessage),
             YtmrsMsg::RequestRecieved(response) => match response {
                 RequestResult::Success(s) => {
                     Cm::perform(Ytmrs::parse_request(s), |result| match result {
@@ -303,7 +270,7 @@ impl Ytmrs {
                     Cm::perform(
                         FileCache::extend(
                             self.cache.songs.filepath.clone(),
-                            songs.clone().into_iter(),
+                            songs.into_iter(),
                             true,
                         ),
                         move |s| match s {
@@ -321,35 +288,79 @@ impl Ytmrs {
                 println!["{:?}", e];
                 Cm::none()
             }
-            YtmrsMsg::SearchWindowMessage(msg) => self
-                .search
-                .update(msg, &self.inputs.modifiers)
-                .map(|msg| match msg {
-                    SWMessage::HandleZones(k, z) => YtmrsMsg::HandleZones(k, z),
-                    _ => YtmrsMsg::SearchWindowMessage(msg),
-                }),
-            YtmrsMsg::SongOpMsg(msg) => {
-                match self.settings.operation_constructor.update(msg) {
-                    UpdateResult::Cm(cm) => cm.map(YtmrsMsg::SongOpMsg),
-                    UpdateResult::SongClicked(wid) => {
-                        self.song_clicked(wid);
-                        Cm::none()
-                    }
-                    UpdateResult::Move(from, to) => {
-                        // Remove item at `from` and place it to `to`
-                        let from_path = self.settings.operation_constructor.path_to_id(&from);
-                        let to_path = self.settings.operation_constructor.path_to_id(&to);
-                        if from_path.is_none() || to_path.is_none() {
-                            return Cm::none();
+            YtmrsMsg::SearchWindowMessage(msg) => {
+                match msg {
+                    SWMessage::SearchQuerySubmitted => {
+                        // Check if URL is valid
+                        match Url::parse(&self.search.query) {
+                            Ok(_) => Cm::perform(
+                                self.backend_handler
+                                    .lock()
+                                    .unwrap()
+                                    .request_info(self.search.query.clone())
+                                    .unwrap(),
+                                YtmrsMsg::RequestRecieved,
+                            ),
+                            // URL failed to parse, try to search Youtube
+                            Err(e) => {
+                                println![
+                                    "Failed to parse: \"{}\". assuming it's a search query",
+                                    e
+                                ];
+                                Cm::perform(
+                                    self.backend_handler
+                                        .lock()
+                                        .unwrap()
+                                        .request_search(self.search.query.clone())
+                                        .unwrap(),
+                                    YtmrsMsg::RequestRecieved,
+                                )
+                            }
                         }
-                        let from_path = from_path.unwrap();
-                        let to_path = to_path.unwrap();
-
-                        self.so_move(from_path, to_path);
-
-                        Cm::none()
                     }
-                    UpdateResult::None => Cm::none(),
+                    _ => self
+                        .search
+                        .update(msg, &self.inputs.modifiers)
+                        .map(|msg| match msg {
+                            SWMessage::HandleZones(k, z) => YtmrsMsg::HandleZones(k, z),
+                            _ => YtmrsMsg::SearchWindowMessage(msg),
+                        }),
+                }
+            }
+            YtmrsMsg::PlaylistMsg(msg) => {
+                match msg {
+                    PlaylistMessage::ConstructorMessage(msg) => {
+                        match self.settings.playlist.constructor.update(msg) {
+                            UpdateResult::Cm(cm) => cm.map(|m| {
+                                YtmrsMsg::PlaylistMsg(PlaylistMessage::ConstructorMessage(m))
+                            }),
+                            UpdateResult::SongClicked(wid) => {
+                                self.song_clicked(wid);
+                                Cm::none()
+                            }
+                            UpdateResult::Move(from, to) => {
+                                // Remove item at `from` and place it to `to`
+                                let from_path =
+                                    self.settings.playlist.constructor.path_to_id(&from);
+                                let to_path = self.settings.playlist.constructor.path_to_id(&to);
+                                if from_path.is_none() || to_path.is_none() {
+                                    return Cm::none();
+                                }
+                                let from_path = from_path.unwrap();
+                                let to_path = to_path.unwrap();
+
+                                self.so_move(from_path, to_path);
+
+                                Cm::none()
+                            }
+                            UpdateResult::None => Cm::none(),
+                        }
+                    }
+                    _ => self
+                        .settings
+                        .playlist
+                        .update(msg)
+                        .map(YtmrsMsg::PlaylistMsg),
                 }
             }
             YtmrsMsg::AudioTrackerMessage(msg) => match &msg {
@@ -374,7 +385,7 @@ impl Ytmrs {
                     return Cm::none();
                 }
 
-                let top = &mut self.settings.operation_constructor;
+                let top = &mut self.settings.playlist.constructor;
                 println!["{:?}", zones];
 
                 if let Some((id, _)) = zones.iter().rev().find(|(id, _r)| top.item_has_id(id)) {
@@ -398,12 +409,14 @@ impl Ytmrs {
                     if *id == WId::new("base_drop_target") {
                         top.push_to_path(VecDeque::new(), song_key.into());
                         self.settings
-                            .operation_constructor
+                            .playlist
+                            .constructor
                             .update_cache(&mut self.cache.songs);
                     }
                 }
                 self.settings
-                    .operation_constructor
+                    .playlist
+                    .constructor
                     .update_cache(&mut self.cache.songs);
 
                 Cm::none()
@@ -412,7 +425,7 @@ impl Ytmrs {
                 println!["Caching success!"];
                 let new_songs = self.cache.songs.fetch(&keys);
                 self.search.cache.extend(new_songs);
-                // self.settings.queue_cache.extend(new_songs);
+
                 Cm::none()
             }
             YtmrsMsg::CachingFailure => {
@@ -446,7 +459,8 @@ impl Ytmrs {
     fn so_move(&mut self, from: Vec<usize>, to: Vec<usize>) {
         let item = self
             .settings
-            .operation_constructor
+            .playlist
+            .constructor
             .pop_path(from.clone().into());
         if item.is_none() {
             return;
@@ -454,17 +468,19 @@ impl Ytmrs {
         let item = item.unwrap();
 
         self.settings
-            .operation_constructor
+            .playlist
+            .constructor
             .push_to_path(to.clone().into(), item);
         let mut parent_path = to.clone();
         parent_path.pop();
 
         let item_at_id: Option<&mut SongOpConstructor> = if parent_path.is_empty() {
-            Some(&mut self.settings.operation_constructor)
+            Some(&mut self.settings.playlist.constructor)
         } else {
             let item_at_id = self
                 .settings
-                .operation_constructor
+                .playlist
+                .constructor
                 .item_at_path_mut(parent_path.into());
 
             match item_at_id {
@@ -480,32 +496,38 @@ impl Ytmrs {
             parent.update_cache(&mut self.cache.songs);
         } else {
             self.settings
-                .operation_constructor
+                .playlist
+                .constructor
                 .update_cache(&mut self.cache.songs);
         }
     }
 
     /// Generate the song tracker when a song is clicked
     fn song_clicked(&mut self, wid: WId) {
-        let path = self
-            .settings
-            .operation_constructor
-            .path_to_id(&wid)
-            .unwrap();
+        let path = self.settings.playlist.constructor.path_to_id(&wid).unwrap();
 
         println!["Given path: {:?}", path];
-        let song_op = self.settings.operation_constructor.build();
+        let song_op = self.settings.playlist.constructor.build();
         let tracker = SongOpTracker::from_song_op(&song_op, path.into());
         println!["SongOPTracker: {:?}", tracker];
         let generated_path: VecDeque<usize> = tracker.get_current().collect();
         println!["Generated path: {:?}", generated_path];
         let item = self
             .settings
-            .operation_constructor
+            .playlist
+            .constructor
             .item_at_path(generated_path.clone());
         println!["Estimated item at path: {:?}", item];
         println!["Infinite loop type: {:?}", song_op.loop_type()];
         println!["Is valid: {:?}", song_op.is_valid()];
+        if let Some(ConstructorItem::Song(k, _)) = item {
+            let songs = self.cache.songs.fetch(&HashSet::from([k.clone()]));
+            if !songs.is_empty() {
+                println!["Song found in cache"];
+
+                // self.cache.songs.update(generated_path, songs);
+            }
+        }
     }
 
     /// Cache cleanup every fer seconds
@@ -535,11 +557,12 @@ impl Ytmrs {
         ];
 
         {
-            let opcache = self.settings.operation_constructor.cache_size();
+            let opcache = self.settings.playlist.constructor.cache_size();
             self.settings
-                .operation_constructor
+                .playlist
+                .constructor
                 .update_cache(&mut self.cache.songs);
-            let new_opcache = self.settings.operation_constructor.cache_size();
+            let new_opcache = self.settings.playlist.constructor.cache_size();
             let diff = new_opcache as isize - opcache as isize;
             println!["   {:?} arcs changed in constructor", diff];
         }

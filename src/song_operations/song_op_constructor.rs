@@ -10,7 +10,7 @@ use iced_drop::{droppable, zones_on_point};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    caching::{CacheInterface, FileCache, FilePathPair},
+    caching::{CacheInterface, FileCache},
     settings::SongKey,
     song::{Song, SongData},
     styling::FullYtmrsScheme,
@@ -241,8 +241,6 @@ pub struct SongOpConstructor {
     pub list: Vec<ConstructorItem>,
     #[serde(skip)]
     cache: CacheInterface<Song>,
-    #[serde(skip)]
-    thumb_cache: CacheInterface<FilePathPair>,
     pub collapsible: bool,
     collapsed: bool,
     // used for certain operations, like LoopNTimes and Stretch
@@ -255,7 +253,6 @@ impl Default for SongOpConstructor {
             operation: ActualRecursiveOps::PlayOnce,
             list: vec![],
             cache: CacheInterface::default(),
-            thumb_cache: CacheInterface::default(),
             collapsible: true,
             collapsed: false,
             n: 1,
@@ -269,7 +266,6 @@ impl SongOpConstructor {
             operation,
             list,
             cache: CacheInterface::default(),
-            thumb_cache: CacheInterface::default(),
             collapsible: true,
             collapsed: false,
             n: 1,

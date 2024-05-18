@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use async_std::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::song_operations::SongOpConstructor;
+use crate::playlist::Playlist;
 
 pub type SongKey = String;
 
@@ -34,7 +34,7 @@ impl Default for YTMRUserSettings {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct YTMRSettings {
-    pub operation_constructor: SongOpConstructor,
+    pub playlist: Playlist,
     pub user_settings: YTMRUserSettings,
 }
 

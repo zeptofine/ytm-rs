@@ -123,21 +123,19 @@ impl Application for Main {
         match &mut self.state {
             None => match message {
                 MAINMessage::Loaded(o) => {
-                    let (s, coms) = match o {
-                        Ok(settings) => {
-                            let mut main = Ytmrs::new(settings, self.backend.clone());
-                            let commands = main.load().map(MAINMessage::YtmrsMessage);
-                            (main, commands)
-                        }
-                        Err(_) => (Ytmrs::default(), Cm::none()),
+                    let mut s = match o {
+                        Ok(settings) => Ytmrs::new(settings, self.backend.clone()),
+                        Err(_) => Ytmrs::default(),
                     };
+
+                    let commands = s.load().map(MAINMessage::YtmrsMessage);
 
                     self.state = Some(MainState {
                         ytmrs: s,
                         saving: false,
                         state: SchemeState::default(),
                     });
-                    coms
+                    commands
                 }
                 _ => Cm::none(),
             },

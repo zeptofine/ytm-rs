@@ -1,6 +1,6 @@
 use iced::{
     widget::{button, column, row, scrollable, text, text_input},
-    Element,
+    Command, Element,
 };
 use serde::{Deserialize, Serialize};
 
@@ -32,7 +32,7 @@ pub enum PlaylistMessage {
     Save,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Playlist {
     pub id: uuid::Uuid,
     pub name: String,
@@ -51,5 +51,15 @@ impl Playlist {
         );
 
         column![row![name_edit, save_button], constructor].into()
+    }
+
+    pub fn update(&mut self, message: PlaylistMessage) -> Command<PlaylistMessage> {
+        match message {
+            PlaylistMessage::NameEdited(value) => {
+                self.name = value;
+                Command::none()
+            }
+            _ => Command::none(),
+        }
     }
 }
