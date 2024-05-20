@@ -111,9 +111,9 @@ impl SearchWindow {
                                 Element::new(match cached_map.get(key) {
                                     Some(songc) => {
                                         let song = songc.lock().unwrap();
-                                        song.as_data().row(false)
+                                        song.as_data().row(true, false)
                                     }
-                                    None => SongData::mystery_with_id(key.clone()).row(false),
+                                    None => SongData::mystery_with_id(key.clone()).row(true, false),
                                 })
                                 .map(move |_| SWMessage::SelectSong(idx)),
                             )
@@ -129,10 +129,10 @@ impl SearchWindow {
                         scrollable(
                             Container::new(Column::with_children(songs).width(Length::Fill))
                                 .align_x(Horizontal::Left)
-                                .width(Length::Fill)
                                 .max_width(400)
                                 .padding(0),
                         )
+                        .width(Length::Fill)
                         .style(scheme.scrollable_style.clone().update()),
                     )
                 }

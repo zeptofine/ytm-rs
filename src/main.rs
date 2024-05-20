@@ -26,6 +26,7 @@ mod song_list;
 mod song_operations;
 mod styling;
 mod thumbnails;
+
 mod user_input;
 mod ytmrs;
 
@@ -296,7 +297,7 @@ pub fn main() -> iced::Result {
     {
         let mut b = backend.lock().unwrap();
         if let BackendLaunchStatus::Launched(ConnectionMode::Child(process, _)) = &mut b.status {
-            let _ = process.kill();
+            println!["Kill result: {:?}", process.kill()];
             println!["Killed backend"];
         }
     }

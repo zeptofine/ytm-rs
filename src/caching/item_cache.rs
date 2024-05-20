@@ -1,12 +1,12 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
-    io::{BufRead, Write},
-    path::PathBuf,
     sync::{Arc, Mutex},
 };
 
 use serde::{Deserialize, Serialize};
+
+use super::{CacheReader, LineBasedCache};
 
 #[derive(Debug, Clone)]
 pub struct LineItemPair<T>(
@@ -19,125 +19,6 @@ pub trait IDed {
 }
 
 pub type CacheMap<T> = HashMap<String, Arc<Mutex<T>>>;
-
-macro_rules! to_hash_map {
-    ($items:expr) => {{
-        $items.map(|item| (item.id().to_string(), item)).collect()
-    }};
-}
-
-fn filter_file_items<'a, T: IDed>(
-    items: impl Iterator<Item = LineItemPair<T>> + 'a,
-    overwrite: bool,
-    filter: &'a mut HashMap<String, T>,
-) -> impl Iterator<Item = Vec<u8>> + 'a {
-    items.filter_map(move |LineItemPair(mut line, item)| {
-        line.push('\n');
-        let id = item.id();
-        match (overwrite, filter.contains_key(id)) {
-            (true, true) => None,
-            (true, false) => Some(line.as_bytes().to_vec()),
-            (false, true) => {
-                filter.remove(id);
-                Some(line.as_bytes().to_vec())
-            }
-            (false, false) => Some(line.as_bytes().to_vec()),
-        }
-    })
-}
-
-pub trait CacheReader {
-    /// Creates an iterator from reading the ndjson file and creating items.
-    /// The iterator yields a struct of the original line and the created item
-    fn read<T: IDed + for<'de> Deserialize<'de>>(
-        &self,
-    ) -> Result<impl Iterator<Item = LineItemPair<T>>, std::io::Error>;
-
-    fn read_filter<T: IDed + for<'de> Deserialize<'de>>(
-        &self,
-        ids: HashSet<String>,
-    ) -> Result<impl Iterator<Item = LineItemPair<T>>, std::io::Error> {
-        Ok(self
-            .read::<T>()?
-            .filter(move |item| ids.contains(item.1.id())))
-    }
-
-    fn extend<T: IDed + Serialize + for<'de> Deserialize<'de>>(
-        self,
-        items: impl Iterator<Item = T>,
-        overwrite: bool,
-    ) -> Result<(), async_std::io::Error>;
-}
-
-#[derive(Debug, Clone)]
-pub struct LineBasedCache {
-    pub filepath: PathBuf,
-}
-impl LineBasedCache {
-    pub fn new(filepath: PathBuf) -> Self {
-        Self { filepath }
-    }
-}
-
-impl CacheReader for LineBasedCache {
-    fn read<T: IDed + for<'de> Deserialize<'de>>(
-        &self,
-    ) -> Result<impl Iterator<Item = LineItemPair<T>>, std::io::Error> {
-        std::fs::File::open(&self.filepath).map(|file| {
-            std::io::BufReader::new(file)
-                .lines()
-                .map_while(Result::ok)
-                .filter_map(|l| {
-                    serde_json::from_str::<T>(&l)
-                        .ok()
-                        .map(|s| LineItemPair(l, s))
-                })
-        })
-    }
-
-    fn extend<T: IDed + Serialize + for<'de> Deserialize<'de>>(
-        self,
-        items: impl Iterator<Item = T>,
-        overwrite: bool,
-    ) -> Result<(), std::io::Error> {
-        let mut items: HashMap<String, T> = to_hash_map!(items);
-
-        let filepath = &self.filepath;
-        let tempfile = filepath.with_extension("ndjson.tmp");
-
-        {
-            // Create the temporary file to write the new list to
-            let output_file = std::fs::File::create(&tempfile)?;
-            let mut out = std::io::BufWriter::new(output_file);
-            {
-                // Read the original list
-                if let Ok(itemlist) = self.read() {
-                    // Filter through the lines, find existing keys and skip broken lines
-                    let valid_items = filter_file_items(itemlist, overwrite, &mut items);
-
-                    for bytes in valid_items {
-                        out.write_all(&bytes)?;
-                    }
-
-                    out.flush()?;
-                }
-            }
-
-            // Add remaining keys to the file
-            for (_id, item) in items {
-                let mut json = serde_json::to_string(&item).unwrap();
-                json.push('\n');
-                out.write_all(json.as_bytes())?;
-            }
-            out.flush()?;
-        }
-
-        // Replace songs.ndjson with songs.ndjson.tmp
-        std::fs::rename(&tempfile, filepath)?;
-
-        Ok(())
-    }
-}
 
 // I would put this as an impl in FileCache but im not smart enough to make that happen
 #[derive(Debug, Clone)]

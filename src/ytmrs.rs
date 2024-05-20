@@ -211,6 +211,7 @@ impl Ytmrs {
     pub fn update(&mut self, message: YtmrsMsg) -> Cm<YtmrsMsg> {
         let command = match message {
             YtmrsMsg::ModifierChanged(m) => {
+                println!["{:?}", m];
                 self.inputs.modifiers = m;
 
                 Cm::none()

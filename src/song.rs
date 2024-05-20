@@ -3,7 +3,7 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 
 use iced::{
-    advanced::image as iced_image,
+    advanced::{image as iced_image, mouse::click},
     alignment::{Horizontal, Vertical},
     widget::{self, button, column, container, hover, row, text, Image, Row, Svg},
     Alignment, Background, Border, Color, Element, Length, Shadow, Vector,
@@ -171,35 +171,56 @@ impl SongData {
         }
     }
 
-    pub fn row<'a>(self, playable: bool) -> Row<'a, SongMessage> {
+    pub fn row<'a>(self, clickable: bool, hover_play_button: bool) -> Row<'a, SongMessage> {
         let img = Self::image_or_placeholder(self.handle.clone(), 80, 80);
+
+        let c = match clickable {
+            false => img,
+            true => button(container(img))
+                .width(80)
+                .height(80)
+                .on_press(SongMessage::ThumbnailClicked)
+                .style(|_, _| widget::button::Style {
+                    background: None,
+                    text_color: Color::WHITE,
+                    border: Border {
+                        color: Color::TRANSPARENT,
+                        width: 0.,
+                        radius: 0.into(),
+                    },
+                    shadow: Shadow {
+                        color: Color::BLACK,
+                        offset: Vector::ZERO,
+                        blur_radius: 0.,
+                    },
+                })
+                .into(),
+        };
+
         let row = row![
-            match playable {
-                false => img,
+            match hover_play_button {
+                false => c,
                 true => hover(
-                    img,
-                    button(
-                        container(Svg::new(PLAY_SVG.clone()))
-                            .align_x(Horizontal::Center)
-                            .align_y(Vertical::Center)
-                    )
-                    .style(|_, _| widget::button::Style {
-                        background: Some(Background::Color(Color::new(0., 0., 0., 0.75))),
-                        text_color: Color::WHITE,
-                        border: Border {
-                            color: Color::TRANSPARENT,
-                            width: 0.,
-                            radius: 0.into()
-                        },
-                        shadow: Shadow {
-                            color: Color::BLACK,
-                            offset: Vector::ZERO,
-                            blur_radius: 0.
-                        }
-                    })
-                    .width(80)
-                    .height(80)
-                    .on_press(SongMessage::ThumbnailClicked)
+                    c,
+                    container(Svg::new(PLAY_SVG.clone()))
+                        .align_x(Horizontal::Center)
+                        .align_y(Vertical::Center)
+                        .style(|_| widget::container::Style {
+                            background: Some(Background::Color(Color::new(0., 0., 0., 0.75))),
+                            text_color: Some(Color::WHITE),
+                            border: Border {
+                                color: Color::TRANSPARENT,
+                                width: 0.,
+                                radius: 0.into()
+                            },
+                            shadow: Shadow {
+                                color: Color::BLACK,
+                                offset: Vector::ZERO,
+                                blur_radius: 0.
+                            }
+                        })
+                        .width(80)
+                        .height(80)
                 ),
             },
             column![text(format!(

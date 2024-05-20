@@ -362,7 +362,7 @@ impl SongOpConstructor {
                 };
                 let wid = WId::from(sid.0.clone());
                 let swid = WId::from(sid.0.clone());
-                let song = Element::new(data.row(true))
+                let song = Element::new(data.row(true, true))
                     .map(move |_| SongOpMessage::SongClicked(swid.clone()));
 
                 container(
