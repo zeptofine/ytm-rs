@@ -21,7 +21,7 @@ use reqwest::Url;
 use crate::{
     audio::{AudioProgressTracker, TrackerMsg, YTMRSAudioManager},
     backend_handler::{BackendHandler, BackendLaunchStatus, RequestResult},
-    caching::FileCache,
+    caching::{CacheType, FileCache, LineBasedCache},
     playlist::PlaylistMessage,
     response_types::{YTResponseError, YTResponseType},
     search_window::{SWMessage, SearchType, SearchWindow},
@@ -90,7 +90,7 @@ pub struct YtmrsCache {
 impl Default for YtmrsCache {
     fn default() -> Self {
         Self {
-            songs: FileCache::new(songs_path()),
+            songs: FileCache::new(CacheType::Line(LineBasedCache::new(songs_path()))),
         }
     }
 }
@@ -268,11 +268,7 @@ impl Ytmrs {
 
                     // Add the songs to the file cache
                     Cm::perform(
-                        FileCache::extend(
-                            self.cache.songs.filepath.clone(),
-                            songs.into_iter(),
-                            true,
-                        ),
+                        FileCache::extend(self.cache.songs.reader.clone(), songs.into_iter(), true),
                         move |s| match s {
                             Ok(_) => YtmrsMsg::CachingSuccess(keyset),
                             Err(_) => YtmrsMsg::CachingFailure,
@@ -368,7 +364,13 @@ impl Ytmrs {
                 TrackerMsg::Play => todo!(),
                 TrackerMsg::Next => todo!(),
                 TrackerMsg::Previous => todo!(),
-                TrackerMsg::UpdateVolume(_) => todo!(),
+                TrackerMsg::UpdateVolume(v) => {
+                    println!["{:?}", v];
+                    println!["Current volume: {:?}", self.audio_manager.volume()];
+                    self.audio_manager.set_volume(v / 1000_f32);
+                    println!["Current volume: {:?}", self.audio_manager.volume()];
+                    Cm::none()
+                }
                 TrackerMsg::ProgressSliderChanged(_) => self
                     .audio_tracker
                     .update(msg)
@@ -524,8 +526,15 @@ impl Ytmrs {
             let songs = self.cache.songs.fetch(&HashSet::from([k.clone()]));
             if !songs.is_empty() {
                 println!["Song found in cache"];
-
-                // self.cache.songs.update(generated_path, songs);
+                let song = &songs[k].clone();
+                let song = song.lock().unwrap();
+                println!["Song: {:?}", song];
+                match &song.song_cache_id {
+                    Some(id) => { // use the id to find the song in the song cache and play it
+                    }
+                    None => { // Download the song, add it to the cache, and play it
+                    }
+                }
             }
         }
     }

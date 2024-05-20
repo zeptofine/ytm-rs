@@ -1,10 +1,6 @@
 use std::{cmp::Ordering, fmt::Debug, ops::RangeInclusive};
 
-use iced::{
-    keyboard::{self, Modifiers},
-    widget::text_input,
-};
-use once_cell::sync::Lazy;
+use iced::keyboard::{self, Modifiers};
 
 #[derive(Debug, Clone, Default)]
 pub enum SelectionMode {

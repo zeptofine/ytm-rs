@@ -66,7 +66,7 @@ impl AudioProgressTracker {
         self.elapsed = manager.elapsed();
         self.total = manager.total();
         self.paused = manager.is_paused();
-        self.volume = manager.volume();
+        self.volume = manager.volume() * 1000_f32;
     }
 
     pub fn view(&self, scheme: &FullYtmrsScheme) -> Element<TrackerMsg> {
@@ -111,7 +111,7 @@ impl AudioProgressTracker {
                 .style(move |_, s| button_style.clone().update(s))
         };
 
-        let volume_slider = slider(0.0..=1.0, self.volume, TrackerMsg::UpdateVolume);
+        let volume_slider = slider(0.0..=1000.0, self.volume, TrackerMsg::UpdateVolume);
         Element::new(
             column![
                 progress_bar,
