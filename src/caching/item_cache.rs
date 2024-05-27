@@ -21,9 +21,26 @@ pub trait IDed {
 pub type CacheMap<T> = HashMap<String, Arc<Mutex<T>>>;
 
 pub trait BufferedCache<S, T: IDed> {
+    fn items<'a>(&'a self) -> impl Iterator<Item = (&'a S, &'a Arc<Mutex<T>>)>
+    where
+        S: 'a,
+        T: 'a;
+
     /// Filters out the items that have only one refcount,
     /// meaning they are no longer being used by anything other than the map
-    fn find_unused_items(&self) -> impl Iterator<Item = String> + '_;
+    fn find_unused_items<'a>(&'a self) -> impl Iterator<Item = &'a S>
+    where
+        S: 'a,
+        T: 'a,
+    {
+        self.items().filter_map(|(key, s)| {
+            let count = Arc::strong_count(s);
+            match count == 1 {
+                true => Some(key),
+                false => None,
+            }
+        })
+    }
 
     fn drop_from_cache(&mut self, keys: impl IntoIterator<Item = String>);
 
@@ -33,7 +50,10 @@ pub trait BufferedCache<S, T: IDed> {
         reader: Arc<Mutex<R>>,
         items: impl IntoIterator<Item = T>,
         overwrite: bool,
-    ) -> Result<(), async_std::io::Error>;
+    ) -> Result<(), async_std::io::Error> {
+        let reader = reader.lock().unwrap();
+        reader.clone().extend(items, overwrite)
+    }
 
     fn cache_ids(
         &mut self,
@@ -48,11 +68,11 @@ pub trait BufferedCache<S, T: IDed> {
 pub type LineItemPair<T> = SourceItemPair<String, T>;
 
 #[derive(Debug, Clone)]
-pub struct FileCache<T: Serialize + for<'de> Deserialize<'de> + IDed> {
+pub struct NDJsonCache<T: Serialize + for<'de> Deserialize<'de> + IDed> {
     map: CacheMap<T>,
     pub reader: Arc<Mutex<LineBasedReader>>,
 }
-impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
+impl<T: Serialize + for<'de> Deserialize<'de> + IDed> NDJsonCache<T> {
     pub fn new(cache: LineBasedReader) -> Self {
         Self {
             reader: Arc::new(Mutex::new(cache)),
@@ -61,17 +81,12 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
     }
 }
 
-impl<T: Serialize + for<'de> Deserialize<'de> + IDed> BufferedCache<String, T> for FileCache<T> {
-    /// Filters out the items that have only one refcount,
-    /// meaning they are no longer being used by anything other than the map
-    fn find_unused_items(&self) -> impl Iterator<Item = String> + '_ {
-        self.map.iter().filter_map(|(key, s)| {
-            let count = Arc::strong_count(s);
-            match count == 1 {
-                true => Some(key.clone()),
-                false => None,
-            }
-        })
+impl<T: Serialize + for<'de> Deserialize<'de> + IDed> BufferedCache<String, T> for NDJsonCache<T> {
+    fn items<'a>(&'a self) -> impl Iterator<Item = (&'a String, &'a Arc<Mutex<T>>)>
+    where
+        T: 'a,
+    {
+        self.map.iter()
     }
 
     fn drop_from_cache(&mut self, keys: impl IntoIterator<Item = String>) {
@@ -86,33 +101,19 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> BufferedCache<String, T> f
         match cs_keys.is_empty() {
             true => self.cache_ids(ids).collect(),
             false => {
-                let already_cached = ids.intersection(&cs_keys);
                 let not_cached: HashSet<_> = ids.difference(&cs_keys).cloned().collect();
 
                 // chain caches from ndjson if not_cached is not empty
                 let get_cache = (!not_cached.is_empty())
-                    .then(|| {
-                        self.cache_ids(&not_cached)
-                            .collect::<Vec<(String, Arc<Mutex<T>>)>>()
-                    })
+                    .then(|| self.cache_ids(&not_cached).collect::<Vec<_>>())
                     .into_iter()
                     .flatten();
-                already_cached
-                    .into_iter()
+                ids.intersection(&cs_keys) // Already in cache
                     .map(|k| (k.clone(), self.new_arc(k)))
                     .chain(get_cache)
                     .collect()
             }
         }
-    }
-
-    fn extend<R: CacheReader<String, T> + Debug + Clone>(
-        reader: Arc<Mutex<R>>,
-        items: impl IntoIterator<Item = T>,
-        overwrite: bool,
-    ) -> Result<(), async_std::io::Error> {
-        let reader = reader.lock().unwrap();
-        reader.clone().extend(items, overwrite)
     }
 
     fn cache_ids(
@@ -215,7 +216,7 @@ mod tests {
         }))
     });
 
-    use super::FileCache;
+    use super::NDJsonCache;
 
     #[test]
     fn fetching() {
@@ -228,7 +229,7 @@ mod tests {
             .chain(missing_songs.clone().iter().map(|s| s.id.clone()))
             .collect();
 
-        let mut sc: FileCache<Song> = FileCache {
+        let mut sc: NDJsonCache<Song> = NDJsonCache {
             reader: READER.clone(),
             map: Default::default(),
         };
@@ -257,7 +258,7 @@ mod tests {
         let first_key = songs[0].id.clone();
         let keys: HashSet<SongKey> = songs.iter().map(|s| s.id.clone()).collect();
 
-        let mut sc: FileCache<Song> = FileCache {
+        let mut sc: NDJsonCache<Song> = NDJsonCache {
             reader: READER.clone(),
             map: Default::default(),
         };
@@ -294,7 +295,7 @@ mod tests {
         let songs = vec![Song::basic(), Song::basic()];
         let first_key = songs[0].id.clone(); // the drop target
 
-        let mut sc: FileCache<Song> = FileCache {
+        let mut sc: NDJsonCache<Song> = NDJsonCache {
             reader: READER.clone(),
             map: Default::default(),
         };
@@ -308,15 +309,14 @@ mod tests {
         }
         sc.fetch(&songs.into_iter().map(|s| s.id().to_string()).collect());
         println!["SC: {:?}", sc];
-        let mut unused: Vec<_> = sc.find_unused_items().collect();
+        let mut unused: Vec<String> = sc.find_unused_items().cloned().collect();
         println!["{:?}", unused];
         assert_eq![unused.len(), 2];
         sc.drop_from_cache([first_key]);
-        unused = sc.find_unused_items().collect();
+        unused = sc.find_unused_items().cloned().collect();
         assert_eq![unused.len(), 1];
 
         sc.drop_from_cache(unused);
-        unused = sc.find_unused_items().collect();
-        assert_eq![unused.len(), 0];
+        assert_eq![sc.find_unused_items().collect::<Vec<_>>().len(), 0];
     }
 }

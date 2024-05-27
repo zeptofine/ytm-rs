@@ -21,7 +21,7 @@ use reqwest::Url;
 use crate::{
     audio::{AudioProgressTracker, TrackerMsg, YTMRSAudioManager},
     backend_handler::{BackendHandler, BackendLaunchStatus, RequestResult},
-    caching::{BufferedCache, FileCache, LineBasedReader},
+    caching::{BufferedCache, LineBasedReader, NDJsonCache},
     playlist::PlaylistMessage,
     response_types::{YTResponseError, YTResponseType},
     search_window::{SWMessage, SearchType, SearchWindow},
@@ -84,13 +84,13 @@ fn playlists_directory() -> PathBuf {
 
 #[derive(Debug)]
 pub struct YtmrsCache {
-    pub songs: FileCache<Song>,
+    pub songs: NDJsonCache<Song>,
 }
 
 impl Default for YtmrsCache {
     fn default() -> Self {
         Self {
-            songs: FileCache::new(LineBasedReader::new(songs_path())),
+            songs: NDJsonCache::new(LineBasedReader::new(songs_path())),
         }
     }
 }
@@ -268,7 +268,7 @@ impl Ytmrs {
                     let keyset: HashSet<_> = keys.into_iter().collect();
 
                     // Add the songs to the file cache
-                    match FileCache::extend(self.cache.songs.reader.clone(), songs, true) {
+                    match NDJsonCache::extend(self.cache.songs.reader.clone(), songs, true) {
                         Ok(_) => {
                             let new_songs = self.cache.songs.fetch(&keyset);
                             self.search.cache.extend(new_songs);
@@ -580,7 +580,7 @@ impl Ytmrs {
             println!["   {:?} arcs changed in constructor", diff];
         }
 
-        let unused: Vec<String> = self.cache.songs.find_unused_items().collect();
+        let unused: Vec<String> = self.cache.songs.find_unused_items().cloned().collect();
         let unused_count = unused.len();
         self.cache.songs.drop_from_cache(unused);
         println!["   {:?} songs dropped from cache", unused_count];

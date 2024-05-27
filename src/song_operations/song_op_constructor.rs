@@ -10,7 +10,7 @@ use iced_drop::{droppable, zones_on_point};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    caching::{BufferedCache, CacheInterface, FileCache},
+    caching::{BufferedCache, CacheInterface, NDJsonCache},
     settings::SongKey,
     song::{Song, SongData},
     styling::FullYtmrsScheme,
@@ -513,7 +513,7 @@ impl SongOpConstructor {
         }
     }
 
-    pub fn update_cache(&mut self, sc: &mut FileCache<Song>) {
+    pub fn update_cache(&mut self, sc: &mut NDJsonCache<Song>) {
         let used_songs: HashSet<_> = self.all_song_keys_rec().cloned().collect();
         self.cache.replace(sc.fetch(&used_songs));
         for item in self.list.iter_mut() {

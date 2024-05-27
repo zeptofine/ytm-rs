@@ -9,5 +9,5 @@ pub trait CacheReader<S, T: IDed> {
         self,
         items: impl IntoIterator<Item = T>,
         overwrite: bool,
-    ) -> Result<(), async_std::io::Error>;
+    ) -> Result<(), std::io::Error>;
 }

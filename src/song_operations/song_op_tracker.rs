@@ -92,7 +92,7 @@ impl From<&RecursiveSongOp> for SongOpTracker {
                 children: Self::map(ops),
             },
             RecursiveSongOp::RandomPlay(ops) => {
-                let mut randomized_indices = (0..ops.len()).collect::<Vec<usize>>();
+                let mut randomized_indices = (0..ops.len()).collect::<Vec<_>>();
                 randomized_indices.shuffle(&mut thread_rng());
                 Self::RandomPlay {
                     current: 0,
