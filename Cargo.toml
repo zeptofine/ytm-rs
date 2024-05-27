@@ -26,7 +26,7 @@ features = ["serde", "image"]
 
 [dependencies.iced]
 git = "https://github.com/iced-rs/iced.git"
-rev = "d5bb6deb2fe15790d9ffe37243592189f1dd28c5"
+rev = "8d1e639c5d34fd9463b0868113612e437973df8c"
 # default-features = false
 features = ["debug", "lazy", "tokio", "image", "canvas", "advanced", "svg"]
 

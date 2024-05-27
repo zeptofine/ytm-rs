@@ -217,8 +217,7 @@ impl Application for Main {
             )
             .align_x(Horizontal::Center)
             .width(Length::Fill)
-            .height(Length::Fill)
-            .center_y()
+            .center_y(Length::Fill)
             .into(),
 
             Some(state) => {
