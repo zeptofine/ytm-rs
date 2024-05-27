@@ -6,14 +6,14 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::{CacheReader, IDed, LineItemPair};
+use super::{CacheReader, IDed, LineItemPair, SourceItemPair};
 
 fn filter_file_items<'a, T: IDed>(
     items: impl Iterator<Item = LineItemPair<T>> + 'a,
     overwrite: bool,
     filter: &'a mut HashMap<String, T>,
 ) -> impl Iterator<Item = Vec<u8>> + 'a {
-    items.filter_map(move |LineItemPair(mut line, item)| {
+    items.filter_map(move |SourceItemPair(mut line, item)| {
         line.push('\n');
         let id = item.id();
         match (overwrite, filter.contains_key(id)) {
@@ -29,19 +29,17 @@ fn filter_file_items<'a, T: IDed>(
 }
 
 #[derive(Debug, Clone)]
-pub struct LineBasedCache {
+pub struct LineBasedReader {
     pub filepath: PathBuf,
 }
-impl LineBasedCache {
+impl LineBasedReader {
     pub fn new(filepath: PathBuf) -> Self {
         Self { filepath }
     }
 }
 
-impl CacheReader for LineBasedCache {
-    fn read<T: IDed + for<'de> Deserialize<'de>>(
-        &self,
-    ) -> Result<impl Iterator<Item = LineItemPair<T>>, std::io::Error> {
+impl<T: IDed + Serialize + for<'de> Deserialize<'de>> CacheReader<String, T> for LineBasedReader {
+    fn read(&self) -> Result<impl Iterator<Item = LineItemPair<T>>, std::io::Error> {
         std::fs::File::open(&self.filepath).map(|file| {
             std::io::BufReader::new(file)
                 .lines()
@@ -49,17 +47,18 @@ impl CacheReader for LineBasedCache {
                 .filter_map(|l| {
                     serde_json::from_str::<T>(&l)
                         .ok()
-                        .map(|s| LineItemPair(l, s))
+                        .map(|s| SourceItemPair(l, s))
                 })
         })
     }
 
-    fn extend<T: IDed + Serialize + for<'de> Deserialize<'de>>(
+    fn extend(
         self,
-        items: impl Iterator<Item = T>,
+        items: impl IntoIterator<Item = T>,
         overwrite: bool,
     ) -> Result<(), std::io::Error> {
-        let mut items: HashMap<String, T> = items.map(|i| (i.id().to_string(), i)).collect();
+        let mut items: HashMap<String, T> =
+            items.into_iter().map(|i| (i.id().to_string(), i)).collect();
 
         let filepath = &self.filepath;
         let tempfile = filepath.with_extension("ndjson.tmp");

@@ -10,7 +10,7 @@ use iced_drop::{droppable, zones_on_point};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    caching::{CacheInterface, FileCache},
+    caching::{BufferedCache, CacheInterface, FileCache},
     settings::SongKey,
     song::{Song, SongData},
     styling::FullYtmrsScheme,

@@ -6,12 +6,12 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::{CacheReader, LineBasedCache};
+use super::{CacheReader, LineBasedReader};
 
 #[derive(Debug, Clone)]
-pub struct LineItemPair<T>(
-    pub String, // line
-    pub T,      // item generated from line
+pub struct SourceItemPair<S, T>(
+    pub S, // source
+    pub T, // result
 );
 
 pub trait IDed {
@@ -20,48 +20,51 @@ pub trait IDed {
 
 pub type CacheMap<T> = HashMap<String, Arc<Mutex<T>>>;
 
-// I would put this as an impl in FileCache but im not smart enough to make that happen
-#[derive(Debug, Clone)]
-pub enum CacheType {
-    Line(LineBasedCache),
-}
-impl CacheReader for CacheType {
-    fn read<T: IDed + for<'de> Deserialize<'de>>(
-        &self,
-    ) -> Result<impl Iterator<Item = LineItemPair<T>>, std::io::Error> {
-        match self {
-            CacheType::Line(lc) => lc.read(),
-        }
-    }
+pub trait BufferedCache<S, T: IDed> {
+    /// Filters out the items that have only one refcount,
+    /// meaning they are no longer being used by anything other than the map
+    fn find_unused_items(&self) -> impl Iterator<Item = String> + '_;
 
-    fn extend<T: IDed + Serialize + for<'de> Deserialize<'de>>(
-        self,
-        items: impl Iterator<Item = T>,
+    fn drop_from_cache(&mut self, keys: impl IntoIterator<Item = String>);
+
+    fn fetch(&mut self, ids: &HashSet<String>) -> CacheMap<T>;
+
+    fn extend<R: CacheReader<S, T> + Debug + Clone>(
+        reader: Arc<Mutex<R>>,
+        items: impl IntoIterator<Item = T>,
         overwrite: bool,
-    ) -> Result<(), async_std::io::Error> {
-        match self {
-            CacheType::Line(lc) => lc.extend(items, overwrite),
-        }
-    }
+    ) -> Result<(), async_std::io::Error>;
+
+    fn cache_ids(
+        &mut self,
+        ids: &HashSet<String>,
+    ) -> impl Iterator<Item = (String, Arc<Mutex<T>>)> + '_;
+
+    fn new_arc(&self, id: &str) -> Arc<Mutex<T>>;
+
+    fn cache_size(&self) -> usize;
 }
+
+pub type LineItemPair<T> = SourceItemPair<String, T>;
 
 #[derive(Debug, Clone)]
 pub struct FileCache<T: Serialize + for<'de> Deserialize<'de> + IDed> {
     map: CacheMap<T>,
-    pub reader: Arc<Mutex<CacheType>>,
+    pub reader: Arc<Mutex<LineBasedReader>>,
 }
-
 impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
-    pub fn new(cache: CacheType) -> Self {
+    pub fn new(cache: LineBasedReader) -> Self {
         Self {
             reader: Arc::new(Mutex::new(cache)),
             map: Default::default(),
         }
     }
+}
 
+impl<T: Serialize + for<'de> Deserialize<'de> + IDed> BufferedCache<String, T> for FileCache<T> {
     /// Filters out the items that have only one refcount,
     /// meaning they are no longer being used by anything other than the map
-    pub fn find_unused_items(&self) -> impl Iterator<Item = String> + '_ {
+    fn find_unused_items(&self) -> impl Iterator<Item = String> + '_ {
         self.map.iter().filter_map(|(key, s)| {
             let count = Arc::strong_count(s);
             match count == 1 {
@@ -71,17 +74,17 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
         })
     }
 
-    pub fn drop_from_cache(&mut self, keys: impl IntoIterator<Item = String>) {
+    fn drop_from_cache(&mut self, keys: impl IntoIterator<Item = String>) {
         keys.into_iter().for_each(|key| {
             self.map.remove(&key);
         });
     }
 
-    pub fn fetch(&mut self, ids: &HashSet<String>) -> CacheMap<T> {
+    fn fetch(&mut self, ids: &HashSet<String>) -> CacheMap<T> {
         let cs_keys: HashSet<String> = self.map.keys().cloned().collect();
 
         match cs_keys.is_empty() {
-            true => self.cache_from_ndjson(ids).collect(),
+            true => self.cache_ids(ids).collect(),
             false => {
                 let already_cached = ids.intersection(&cs_keys);
                 let not_cached: HashSet<_> = ids.difference(&cs_keys).cloned().collect();
@@ -89,7 +92,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
                 // chain caches from ndjson if not_cached is not empty
                 let get_cache = (!not_cached.is_empty())
                     .then(|| {
-                        self.cache_from_ndjson(&not_cached)
+                        self.cache_ids(&not_cached)
                             .collect::<Vec<(String, Arc<Mutex<T>>)>>()
                     })
                     .into_iter()
@@ -103,17 +106,16 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
         }
     }
 
-    pub async fn extend(
-        reader: Arc<Mutex<CacheType>>,
-        items: impl Iterator<Item = T>,
+    fn extend<R: CacheReader<String, T> + Debug + Clone>(
+        reader: Arc<Mutex<R>>,
+        items: impl IntoIterator<Item = T>,
         overwrite: bool,
     ) -> Result<(), async_std::io::Error> {
         let reader = reader.lock().unwrap();
-        reader.clone().extend(items, overwrite)?;
-        Ok(())
+        reader.clone().extend(items, overwrite)
     }
 
-    fn cache_from_ndjson(
+    fn cache_ids(
         &mut self,
         ids: &HashSet<String>,
     ) -> impl Iterator<Item = (String, Arc<Mutex<T>>)> + '_ {
@@ -123,7 +125,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
                     let reader = self.reader.lock().unwrap();
                     let items = match reader.read() {
                         Ok(iter) => iter
-                            .filter_map(move |LineItemPair(_, item): LineItemPair<T>| {
+                            .filter_map(move |SourceItemPair(_, item): LineItemPair<T>| {
                                 let id = item.id().to_string();
                                 ids.contains(&id).then(|| (id, Arc::new(Mutex::new(item))))
                             })
@@ -146,7 +148,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> FileCache<T> {
         Arc::clone(&self.map[id])
     }
 
-    pub fn cache_size(&self) -> usize {
+    fn cache_size(&self) -> usize {
         self.map.len()
     }
 }
@@ -190,7 +192,8 @@ impl<T: IDed + ?Sized> CacheInterface<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::caching::{CacheReader, CacheType, IDed, LineBasedCache};
+    use crate::caching::item_cache::BufferedCache;
+    use crate::caching::{CacheReader, IDed, LineBasedReader};
     use crate::{settings::SongKey, song::Song};
     use once_cell::sync::Lazy;
     use std::path::PathBuf;
@@ -206,10 +209,10 @@ mod tests {
             .join(format!("{:x}", rand::random::<u64>()))
     }
 
-    static READER: Lazy<Arc<Mutex<CacheType>>> = Lazy::new(|| {
-        Arc::new(Mutex::new(CacheType::Line(LineBasedCache {
+    static READER: Lazy<Arc<Mutex<LineBasedReader>>> = Lazy::new(|| {
+        Arc::new(Mutex::new(LineBasedReader {
             filepath: random_file(),
-        })))
+        }))
     });
 
     use super::FileCache;

@@ -21,7 +21,7 @@ use reqwest::Url;
 use crate::{
     audio::{AudioProgressTracker, TrackerMsg, YTMRSAudioManager},
     backend_handler::{BackendHandler, BackendLaunchStatus, RequestResult},
-    caching::{CacheType, FileCache, LineBasedCache},
+    caching::{BufferedCache, FileCache, LineBasedReader},
     playlist::PlaylistMessage,
     response_types::{YTResponseError, YTResponseType},
     search_window::{SWMessage, SearchType, SearchWindow},
@@ -90,7 +90,7 @@ pub struct YtmrsCache {
 impl Default for YtmrsCache {
     fn default() -> Self {
         Self {
-            songs: FileCache::new(CacheType::Line(LineBasedCache::new(songs_path()))),
+            songs: FileCache::new(LineBasedReader::new(songs_path())),
         }
     }
 }
@@ -268,13 +268,16 @@ impl Ytmrs {
                     let keyset: HashSet<_> = keys.into_iter().collect();
 
                     // Add the songs to the file cache
-                    Cm::perform(
-                        FileCache::extend(self.cache.songs.reader.clone(), songs.into_iter(), true),
-                        move |s| match s {
-                            Ok(_) => YtmrsMsg::CachingSuccess(keyset),
-                            Err(_) => YtmrsMsg::CachingFailure,
-                        },
-                    )
+                    match FileCache::extend(self.cache.songs.reader.clone(), songs, true) {
+                        Ok(_) => {
+                            let new_songs = self.cache.songs.fetch(&keyset);
+                            self.search.cache.extend(new_songs);
+                        }
+                        Err(_) => {
+                            println!("Error caching songs");
+                        }
+                    }
+                    Cm::none()
                 }
                 YTResponseType::Search(_s) => {
                     println!["Request is a search"];

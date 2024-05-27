@@ -1,17 +1,13 @@
-use serde::{Deserialize, Serialize};
+use super::{IDed, SourceItemPair};
 
-use super::{IDed, LineItemPair};
-
-pub trait CacheReader {
+pub trait CacheReader<S, T: IDed> {
     /// Creates an iterator from reading the ndjson file and creating items.
     /// The iterator yields a struct of the original line and the created item
-    fn read<T: IDed + for<'de> Deserialize<'de>>(
-        &self,
-    ) -> Result<impl Iterator<Item = LineItemPair<T>>, std::io::Error>;
+    fn read(&self) -> Result<impl Iterator<Item = SourceItemPair<S, T>>, std::io::Error>;
 
-    fn extend<T: IDed + Serialize + for<'de> Deserialize<'de>>(
+    fn extend(
         self,
-        items: impl Iterator<Item = T>,
+        items: impl IntoIterator<Item = T>,
         overwrite: bool,
     ) -> Result<(), async_std::io::Error>;
 }
