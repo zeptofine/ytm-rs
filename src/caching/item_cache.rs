@@ -1,6 +1,7 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{hash_map::Keys, HashMap, HashSet},
     fmt::Debug,
+    hash::Hash,
     sync::{Arc, Mutex},
 };
 
@@ -14,89 +15,37 @@ pub struct SourceItemPair<S, T>(
     pub T, // result
 );
 
-pub trait IDed {
-    fn id(&self) -> &str;
+pub trait IDed<T> {
+    fn id(&self) -> &T;
 }
 
-pub type CacheMap<T> = HashMap<String, Arc<Mutex<T>>>;
+pub type ArcMap<K, V> = HashMap<K, Arc<Mutex<V>>>;
 
-pub trait BufferedCache<S, T: IDed> {
-    fn items<'a>(&'a self) -> impl Iterator<Item = (&'a S, &'a Arc<Mutex<T>>)>
+pub trait BufferedCache<K: Hash + Clone + Eq, V: IDed<K>> {
+    fn items<'a>(&'a self) -> impl Iterator<Item = (&'a K, &'a Arc<Mutex<V>>)>
     where
-        S: 'a,
-        T: 'a;
+        K: 'a,
+        V: 'a;
+
+    fn keys(&self) -> Keys<'_, K, Arc<Mutex<V>>>;
+
+    fn cache_size(&self) -> usize;
 
     /// Filters out the items that have only one refcount,
     /// meaning they are no longer being used by anything other than the map
-    fn find_unused_items<'a>(&'a self) -> impl Iterator<Item = &'a S>
+    fn find_unused_items<'a>(&'a self) -> impl Iterator<Item = &'a K>
     where
-        S: 'a,
-        T: 'a,
+        K: 'a,
+        V: 'a,
     {
-        self.items().filter_map(|(key, s)| {
-            let count = Arc::strong_count(s);
-            match count == 1 {
-                true => Some(key),
-                false => None,
-            }
-        })
+        self.items()
+            .filter_map(|(key, s)| (Arc::strong_count(s) == 1).then_some(key))
     }
 
-    fn drop_from_cache(&mut self, keys: impl IntoIterator<Item = String>);
+    fn drop_from_cache(&mut self, keys: impl IntoIterator<Item = K>);
 
-    fn fetch(&mut self, ids: &HashSet<String>) -> CacheMap<T>;
-
-    fn extend<R: CacheReader<S, T> + Debug + Clone>(
-        reader: Arc<Mutex<R>>,
-        items: impl IntoIterator<Item = T>,
-        overwrite: bool,
-    ) -> Result<(), async_std::io::Error> {
-        let reader = reader.lock().unwrap();
-        reader.clone().extend(items, overwrite)
-    }
-
-    fn cache_ids(
-        &mut self,
-        ids: &HashSet<String>,
-    ) -> impl Iterator<Item = (String, Arc<Mutex<T>>)> + '_;
-
-    fn new_arc(&self, id: &str) -> Arc<Mutex<T>>;
-
-    fn cache_size(&self) -> usize;
-}
-
-pub type LineItemPair<T> = SourceItemPair<String, T>;
-
-#[derive(Debug, Clone)]
-pub struct NDJsonCache<T: Serialize + for<'de> Deserialize<'de> + IDed> {
-    map: CacheMap<T>,
-    pub reader: Arc<Mutex<LineBasedReader>>,
-}
-impl<T: Serialize + for<'de> Deserialize<'de> + IDed> NDJsonCache<T> {
-    pub fn new(cache: LineBasedReader) -> Self {
-        Self {
-            reader: Arc::new(Mutex::new(cache)),
-            map: Default::default(),
-        }
-    }
-}
-
-impl<T: Serialize + for<'de> Deserialize<'de> + IDed> BufferedCache<String, T> for NDJsonCache<T> {
-    fn items<'a>(&'a self) -> impl Iterator<Item = (&'a String, &'a Arc<Mutex<T>>)>
-    where
-        T: 'a,
-    {
-        self.map.iter()
-    }
-
-    fn drop_from_cache(&mut self, keys: impl IntoIterator<Item = String>) {
-        keys.into_iter().for_each(|key| {
-            self.map.remove(&key);
-        });
-    }
-
-    fn fetch(&mut self, ids: &HashSet<String>) -> CacheMap<T> {
-        let cs_keys: HashSet<String> = self.map.keys().cloned().collect();
+    fn fetch(&mut self, ids: &HashSet<K>) -> ArcMap<K, V> {
+        let cs_keys: HashSet<K> = self.keys().cloned().collect();
 
         match cs_keys.is_empty() {
             true => self.cache_ids(ids).collect(),
@@ -116,6 +65,60 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> BufferedCache<String, T> f
         }
     }
 
+    fn extend<R: CacheReader<K, K, V> + Debug + Clone>(
+        reader: Arc<Mutex<R>>,
+        items: impl IntoIterator<Item = V>,
+        overwrite: bool,
+    ) -> Result<(), async_std::io::Error> {
+        let reader = reader.lock().unwrap();
+        reader.clone().extend(items, overwrite)
+    }
+
+    fn cache_ids(&mut self, ids: &HashSet<K>) -> impl Iterator<Item = (K, Arc<Mutex<V>>)> + '_;
+
+    fn new_arc(&self, id: &K) -> Arc<Mutex<V>>;
+}
+
+pub type LineItemPair<T> = SourceItemPair<String, T>;
+
+#[derive(Debug, Clone)]
+pub struct NDJsonCache<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> {
+    map: ArcMap<String, T>,
+    pub reader: Arc<Mutex<LineBasedReader>>,
+}
+impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> NDJsonCache<T> {
+    pub fn new(cache: LineBasedReader) -> Self {
+        Self {
+            reader: Arc::new(Mutex::new(cache)),
+            map: Default::default(),
+        }
+    }
+}
+
+impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> BufferedCache<String, T>
+    for NDJsonCache<T>
+{
+    fn items<'a>(&'a self) -> impl Iterator<Item = (&'a String, &'a Arc<Mutex<T>>)>
+    where
+        T: 'a,
+    {
+        self.map.iter()
+    }
+
+    fn keys(&self) -> Keys<'_, String, Arc<Mutex<T>>> {
+        self.map.keys()
+    }
+
+    fn cache_size(&self) -> usize {
+        self.map.len()
+    }
+
+    fn drop_from_cache(&mut self, keys: impl IntoIterator<Item = String>) {
+        keys.into_iter().for_each(|key| {
+            self.map.remove(&key);
+        });
+    }
+
     fn cache_ids(
         &mut self,
         ids: &HashSet<String>,
@@ -124,15 +127,16 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> BufferedCache<String, T> f
             .then(|| {
                 let items: Vec<_> = {
                     let reader = self.reader.lock().unwrap();
-                    let items = match reader.read() {
-                        Ok(iter) => iter
-                            .filter_map(move |SourceItemPair(_, item): LineItemPair<T>| {
+                    let items = reader
+                        .read()
+                        .map(|iter| {
+                            iter.filter_map(move |SourceItemPair(_, item): SourceItemPair<_, T>| {
                                 let id = item.id().to_string();
                                 ids.contains(&id).then(|| (id, Arc::new(Mutex::new(item))))
                             })
-                            .collect(),
-                        Err(_) => vec![],
-                    };
+                            .collect()
+                        })
+                        .unwrap_or_default();
                     items
                 };
                 self.map.extend(items.clone());
@@ -145,48 +149,40 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed> BufferedCache<String, T> f
             .flatten()
     }
 
-    fn new_arc(&self, id: &str) -> Arc<Mutex<T>> {
+    fn new_arc(&self, id: &String) -> Arc<Mutex<T>> {
         Arc::clone(&self.map[id])
-    }
-
-    fn cache_size(&self) -> usize {
-        self.map.len()
     }
 }
 
 #[derive(Default, Debug, Clone)]
-pub struct CacheInterface<T: ?Sized> {
-    cache: CacheMap<T>,
-    keys: HashSet<String>,
+pub struct CacheInterface<K: Hash + Eq + PartialEq + Clone, V: ?Sized> {
+    cache: HashMap<K, Arc<Mutex<V>>>,
+    keys: HashSet<K>,
 }
 
-impl<T: IDed + ?Sized> CacheInterface<T> {
-    pub fn get<'a>(
-        &'a self,
-        ids: &'a HashSet<String>,
-    ) -> impl Iterator<Item = (String, Arc<Mutex<T>>)> + '_ {
+impl<S: Hash + Eq + PartialEq + Clone, T: IDed<S>> CacheInterface<S, T> {
+    pub fn get<'a>(&'a self, ids: &'a HashSet<S>) -> impl Iterator<Item = (S, Arc<Mutex<T>>)> + '_ {
         let existing = ids.intersection(&self.keys).cloned();
         existing.map(|k| (k.clone(), Arc::clone(&self.cache[&k])))
     }
 
-    pub fn extend(&mut self, items: CacheMap<T>) {
-        let new_keys: HashSet<String> = items.keys().cloned().collect();
+    pub fn extend(&mut self, items: ArcMap<S, T>) {
+        let new_keys: HashSet<S> = items.keys().cloned().collect();
         self.keys = self.keys.union(&new_keys).cloned().collect();
         self.cache.extend(items)
     }
 
-    pub fn replace(&mut self, cache: CacheMap<T>) {
+    pub fn replace(&mut self, cache: ArcMap<S, T>) {
         self.keys = cache.keys().cloned().collect();
         self.cache = cache;
     }
 
-    /// Returns the number of elements in the cache1
-
+    /// Returns the number of elements in the cache
     pub fn len(&self) -> usize {
         self.keys.len()
     }
 
-    pub fn get_keys(&self) -> &HashSet<String> {
+    pub fn get_keys(&self) -> &HashSet<S> {
         &self.keys
     }
 }

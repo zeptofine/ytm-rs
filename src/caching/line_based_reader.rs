@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{CacheReader, IDed, LineItemPair, SourceItemPair};
 
-fn filter_file_items<'a, T: IDed>(
+fn filter_file_items<'a, T: IDed<String>>(
     items: impl Iterator<Item = LineItemPair<T>> + 'a,
     overwrite: bool,
     filter: &'a mut HashMap<String, T>,
@@ -38,7 +38,9 @@ impl LineBasedReader {
     }
 }
 
-impl<T: IDed + Serialize + for<'de> Deserialize<'de>> CacheReader<String, T> for LineBasedReader {
+impl<T: IDed<String> + Serialize + for<'de> Deserialize<'de>> CacheReader<String, String, T>
+    for LineBasedReader
+{
     fn read(&self) -> Result<impl Iterator<Item = LineItemPair<T>>, std::io::Error> {
         std::fs::File::open(&self.filepath).map(|file| {
             std::io::BufReader::new(file)

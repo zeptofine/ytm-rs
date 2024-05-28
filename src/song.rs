@@ -91,8 +91,8 @@ impl Song {
         }
     }
 }
-impl IDed for Song {
-    fn id(&self) -> &str {
+impl IDed<String> for Song {
+    fn id(&self) -> &String {
         &self.id
     }
 }

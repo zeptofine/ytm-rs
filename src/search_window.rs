@@ -44,7 +44,7 @@ pub struct SearchWindow {
     pub query: String,
     pub search_type: SearchType,
     #[serde(skip)]
-    pub cache: CacheInterface<Song>,
+    pub cache: CacheInterface<String, Song>,
 }
 impl Default for SearchWindow {
     fn default() -> Self {

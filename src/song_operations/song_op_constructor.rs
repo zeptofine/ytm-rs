@@ -240,7 +240,7 @@ pub struct SongOpConstructor {
     pub operation: ActualRecursiveOps,
     pub list: Vec<ConstructorItem>,
     #[serde(skip)]
-    cache: CacheInterface<Song>,
+    cache: CacheInterface<String, Song>,
     pub collapsible: bool,
     collapsed: bool,
     // used for certain operations, like LoopNTimes and Stretch
