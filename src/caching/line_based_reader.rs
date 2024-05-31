@@ -1,12 +1,15 @@
 use std::{
     collections::HashMap,
-    io::{BufRead, Write},
+    fs::File,
+    io::{BufRead, BufReader, Write},
     path::PathBuf,
 };
 
 use serde::{Deserialize, Serialize};
 
-use super::{CacheReader, IDed, LineItemPair, SourceItemPair};
+use super::{CacheReader, IDed, SourceItemPair};
+
+pub type LineItemPair<T> = SourceItemPair<String, T>;
 
 fn filter_file_items<'a, T: IDed<String>>(
     items: impl Iterator<Item = LineItemPair<T>> + 'a,
@@ -42,8 +45,8 @@ impl<T: IDed<String> + Serialize + for<'de> Deserialize<'de>> CacheReader<String
     for LineBasedReader
 {
     fn read(&self) -> Result<impl Iterator<Item = LineItemPair<T>>, std::io::Error> {
-        std::fs::File::open(&self.filepath).map(|file| {
-            std::io::BufReader::new(file)
+        File::open(&self.filepath).map(|file| {
+            BufReader::new(file)
                 .lines()
                 .map_while(Result::ok)
                 .filter_map(|l| {
@@ -55,7 +58,7 @@ impl<T: IDed<String> + Serialize + for<'de> Deserialize<'de>> CacheReader<String
     }
 
     fn extend(
-        self,
+        &self,
         items: impl IntoIterator<Item = T>,
         overwrite: bool,
     ) -> Result<(), std::io::Error> {
@@ -67,15 +70,13 @@ impl<T: IDed<String> + Serialize + for<'de> Deserialize<'de>> CacheReader<String
 
         {
             // Create the temporary file to write the new list to
-            let output_file = std::fs::File::create(&tempfile)?;
+            let output_file = File::create(&tempfile)?;
             let mut out = std::io::BufWriter::new(output_file);
             {
                 // Read the original list
                 if let Ok(itemlist) = self.read() {
                     // Filter through the lines, find existing keys and skip broken lines
-                    let valid_items = filter_file_items(itemlist, overwrite, &mut items);
-
-                    for bytes in valid_items {
+                    for bytes in filter_file_items(itemlist, overwrite, &mut items) {
                         out.write_all(&bytes)?;
                     }
 

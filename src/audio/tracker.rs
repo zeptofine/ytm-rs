@@ -1,31 +1,52 @@
+use super::YTMRSAudioManager;
+use crate::{song::format_duration, styling::FullYtmrsScheme};
 use iced::{
-    advanced,
-    widget::{button, column, hover, progress_bar, row, slider, text, Svg},
+    widget::{button, column, hover, progress_bar, row, slider, Text},
     Alignment, Command, Element, Length,
 };
-use once_cell::sync::Lazy;
 
-use crate::{song::format_duration, styling::FullYtmrsScheme};
+#[cfg(feature = "svg")]
+use iced::widget::Svg;
 
-use super::YTMRSAudioManager;
+#[cfg(feature = "svg")]
+fn pause_play_button(playing: bool) -> (Svg<'static>, TrackerMsg) {
+    match playing {
+        true => (Svg::new(crate::audio::PAUSE_SVG.clone()), TrackerMsg::Pause),
+        false => (Svg::new(crate::audio::PLAY_SVG.clone()), TrackerMsg::Play),
+    }
+}
+#[cfg(not(feature = "svg"))]
+fn pause_play_button<'a>(playing: bool) -> (Text<'a>, TrackerMsg) {
+    use iced::alignment::Horizontal;
 
-const PLAY_SVG_DATA: &[u8] =
-    include_bytes!("../../assets/play_arrow_40dp_FILL0_wght400_GRAD0_opsz40.svg");
-const PAUSE_SVG_DATA: &[u8] =
-    include_bytes!("../../assets/pause_40dp_FILL0_wght400_GRAD0_opsz40.svg");
-const SKIP_NEXT_SVG_DATA: &[u8] =
-    include_bytes!("../../assets/skip_next_40dp_FILL0_wght400_GRAD0_opsz40.svg");
-const SKIP_PREVIOUS_SVG_DATA: &[u8] =
-    include_bytes!("../../assets/skip_previous_40dp_FILL0_wght400_GRAD0_opsz40.svg");
-
-pub static PLAY_SVG: Lazy<advanced::svg::Handle> =
-    Lazy::new(|| advanced::svg::Handle::from_memory(PLAY_SVG_DATA));
-pub static PAUSE_SVG: Lazy<advanced::svg::Handle> =
-    Lazy::new(|| advanced::svg::Handle::from_memory(PAUSE_SVG_DATA));
-pub static SKIP_NEXT_SVG: Lazy<advanced::svg::Handle> =
-    Lazy::new(|| advanced::svg::Handle::from_memory(SKIP_NEXT_SVG_DATA));
-pub static SKIP_PREVIOUS_SVG: Lazy<advanced::svg::Handle> =
-    Lazy::new(|| advanced::svg::Handle::from_memory(SKIP_PREVIOUS_SVG_DATA));
+    match playing {
+        true => (
+            Text::new("||").horizontal_alignment(Horizontal::Center),
+            TrackerMsg::Pause,
+        ),
+        false => (
+            Text::new(">").horizontal_alignment(Horizontal::Center),
+            TrackerMsg::Play,
+        ),
+    }
+}
+#[cfg(feature = "svg")]
+fn next_button() -> Svg<'static> {
+    Svg::new(crate::audio::SKIP_NEXT_SVG.clone())
+}
+#[cfg(not(feature = "svg"))]
+fn next_button() -> Text<'static> {
+    Text::new(">|").horizontal_alignment(iced::alignment::Horizontal::Center)
+}
+#[cfg(feature = "svg")]
+fn previous_button() -> Svg<'static> {
+    use iced::{Radians, Rotation};
+    next_button().rotation(Rotation::Floating(Radians::PI)) // Rotate 180 deg
+}
+#[cfg(not(feature = "svg"))]
+fn previous_button() -> Text<'static> {
+    Text::new("|<").horizontal_alignment(iced::alignment::Horizontal::Center)
+}
 
 #[derive(Debug, Clone)]
 pub enum TrackerMsg {
@@ -73,7 +94,7 @@ impl AudioProgressTracker {
         let elapsed = self.elapsed.unwrap_or(0.0);
         let range = 0.0..=self.total.unwrap_or(1.0);
 
-        let duration_display = text(format!(
+        let duration_display = Text::new(format!(
             "{} / {}",
             format_duration(&elapsed),
             format_duration(range.end())
@@ -87,26 +108,23 @@ impl AudioProgressTracker {
 
         let next_button = {
             let button_style = scheme.playback_button_style.clone();
-            button(Svg::new(SKIP_NEXT_SVG.clone()).width(32).height(32))
+            button(next_button())
                 .on_press(TrackerMsg::Next)
                 .style(move |_, s| button_style.clone().update(s))
         };
         let previous_button = {
             let button_style = scheme.playback_button_style.clone();
-            button(Svg::new(SKIP_PREVIOUS_SVG.clone()).width(32).height(32))
+
+            button(previous_button())
                 .on_press(TrackerMsg::Previous)
                 .style(move |_, s| button_style.clone().update(s))
         };
 
         let pause_play_button = {
-            let (button_image, button_message) = if self.paused {
-                (PLAY_SVG.clone(), TrackerMsg::Play)
-            } else {
-                (PAUSE_SVG.clone(), TrackerMsg::Pause)
-            };
+            let (button_image, button_message) = pause_play_button(!self.paused);
             let button_style = scheme.playback_button_style.clone();
 
-            button(Svg::new(button_image).width(32).height(32))
+            button(button_image.width(32).height(32))
                 .on_press(button_message)
                 .style(move |_, s| button_style.clone().update(s))
         };

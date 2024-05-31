@@ -5,3 +5,4 @@ tmp.json
 songlist.json
 .DS_Store
 .pdm-python
+.venv

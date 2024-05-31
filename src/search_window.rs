@@ -26,6 +26,24 @@ impl SearchType {
     pub fn new_tab(songs: Vec<String>) -> Self {
         Self::Tab(songs, SelectionMode::None)
     }
+
+    pub fn selected_keys(&self) -> Vec<&String> {
+        match self {
+            Self::Song(s) => vec![&s],
+            Self::Tab(s, mode) => match mode {
+                SelectionMode::None => vec![],
+                SelectionMode::Single(idx) => match s.get(*idx) {
+                    Some(k) => vec![k],
+                    None => vec![],
+                },
+                SelectionMode::Multiple(v) => v.iter().filter_map(|idx| s.get(*idx)).collect(),
+                SelectionMode::Range { first: _, r } => {
+                    r.clone().filter_map(|idx| s.get(idx)).collect()
+                }
+            },
+            Self::Search(_) => vec![],
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -64,24 +82,7 @@ impl SearchWindow {
     }
 
     pub fn selected_keys(&self) -> Vec<&String> {
-        match &self.search_type {
-            SearchType::Song(s) => vec![&s],
-            SearchType::Tab(s, mode) => match mode {
-                SelectionMode::None => vec![],
-                SelectionMode::Single(idx) => {
-                    let k = s.get(*idx);
-                    match k {
-                        Some(k) => vec![k],
-                        None => vec![],
-                    }
-                }
-                SelectionMode::Multiple(v) => v.iter().filter_map(|idx| s.get(*idx)).collect(),
-                SelectionMode::Range { first: _, r } => {
-                    r.clone().filter_map(|idx| s.get(idx)).collect()
-                }
-            },
-            SearchType::Search(_) => vec![],
-        }
+        self.search_type.selected_keys()
     }
 
     pub fn view(&self, scheme: &FullYtmrsScheme) -> Element<SWMessage> {
@@ -146,7 +147,7 @@ impl SearchWindow {
         match msg {
             SWMessage::SimpleSelectSong(idx) => {
                 if let SearchType::Tab(_, ref mut mode) = self.search_type {
-                    if let SelectionMode::None = mode {
+                    if let SelectionMode::None | SelectionMode::Single(_) = mode {
                         *mode = SelectionMode::Single(idx);
                     }
                 }

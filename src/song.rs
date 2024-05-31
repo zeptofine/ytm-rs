@@ -5,11 +5,20 @@ use serde::{Deserialize, Serialize};
 use iced::{
     advanced::image as iced_image,
     alignment::{Horizontal, Vertical},
-    widget::{self, button, column, container, hover, row, text, Image, Row, Svg},
+    widget::{self, button, column, container, hover, row, text, Row, Text},
     Alignment, Background, Border, Color, Element, Length, Shadow, Vector,
 };
 
-use crate::{audio::PLAY_SVG, caching::IDed, response_types::UrlString, settings::SongKey};
+#[cfg(feature = "thumbnails")]
+use iced::widget::Image;
+
+#[cfg(feature = "svg")]
+use iced::widget::Svg;
+
+#[cfg(feature = "svg")]
+use crate::audio::PLAY_SVG;
+
+use crate::{caching::IDed, response_types::UrlString, settings::SongKey};
 
 fn r(len: usize) -> String {
     thread_rng()
@@ -144,6 +153,7 @@ impl SongData {
         }
     }
 
+    #[cfg(feature = "thumbnails")]
     fn img(h: Option<iced_image::Handle>, x: u16, y: u16) -> Option<Image<iced_image::Handle>> {
         h.map(|h| {
             Image::new(h)
@@ -153,7 +163,16 @@ impl SongData {
         })
     }
 
+    fn placeholder<'a>(width: u16, height: u16) -> Text<'a> {
+        text("???")
+            .height(height)
+            .width(width)
+            .horizontal_alignment(iced::alignment::Horizontal::Center)
+            .vertical_alignment(iced::alignment::Vertical::Center)
+    }
+
     /// Creates the thumbnail of the song data, replacing with "???" text upon missing data.
+    #[cfg(feature = "thumbnails")]
     fn image_or_placeholder<'a, M>(
         h: Option<iced_image::Handle>,
         width: u16,
@@ -161,14 +180,17 @@ impl SongData {
     ) -> Element<'a, M> {
         match Self::img(h, width, height) {
             Some(img) => Element::new(img),
-            None => Element::new(
-                text("???")
-                    .height(height)
-                    .width(width)
-                    .horizontal_alignment(iced::alignment::Horizontal::Center)
-                    .vertical_alignment(iced::alignment::Vertical::Center),
-            ),
+            None => Element::new(Self::placeholder(width, height)),
         }
+    }
+
+    #[cfg(not(feature = "thumbnails"))]
+    fn image_or_placeholder<'a, M>(
+        _h: Option<iced_image::Handle>,
+        width: u16,
+        height: u16,
+    ) -> Element<'a, M> {
+        Element::new(Self::placeholder(width, height))
     }
 
     pub fn row<'a>(self, clickable: bool, hover_play_button: bool) -> Row<'a, SongMessage> {
@@ -200,28 +222,39 @@ impl SongData {
         let row = row![
             match hover_play_button {
                 false => c,
-                true => hover(
-                    c,
-                    container(Svg::new(PLAY_SVG.clone()))
-                        .align_x(Horizontal::Center)
-                        .align_y(Vertical::Center)
-                        .style(|_| widget::container::Style {
-                            background: Some(Background::Color(Color::new(0., 0., 0., 0.75))),
-                            text_color: Some(Color::WHITE),
-                            border: Border {
-                                color: Color::TRANSPARENT,
-                                width: 0.,
-                                radius: 0.into()
-                            },
-                            shadow: Shadow {
-                                color: Color::BLACK,
-                                offset: Vector::ZERO,
-                                blur_radius: 0.
-                            }
-                        })
-                        .width(80)
-                        .height(80)
-                ),
+                true => {
+                    let play_button = {
+                        #[cfg(feature = "svg")]
+                        let x = Svg::new(PLAY_SVG.clone());
+
+                        #[cfg(not(feature = "svg"))]
+                        let x = text("|>");
+                        x
+                    };
+
+                    hover(
+                        c,
+                        container(play_button)
+                            .align_x(Horizontal::Center)
+                            .align_y(Vertical::Center)
+                            .style(|_| widget::container::Style {
+                                background: Some(Background::Color(Color::new(0., 0., 0., 0.75))),
+                                text_color: Some(Color::WHITE),
+                                border: Border {
+                                    color: Color::TRANSPARENT,
+                                    width: 0.,
+                                    radius: 0.into(),
+                                },
+                                shadow: Shadow {
+                                    color: Color::BLACK,
+                                    offset: Vector::ZERO,
+                                    blur_radius: 0.,
+                                },
+                            })
+                            .width(80)
+                            .height(80),
+                    )
+                }
             },
             column![text(format!(
                 "{}\n{}\n{}",

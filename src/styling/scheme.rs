@@ -4,18 +4,25 @@ use iced::{
     gradient::{ColorStop, Linear},
     Background, Color, Degrees, Gradient,
 };
-use image::{imageops::FilterType, io::Reader, GenericImageView};
-use material_colors::{color::Argb, quantize::QuantizerWsmeans, score::Score, theme::ThemeBuilder};
 
 use crate::{
     styling::{
-        argb_to_color, ease_out_cubic, interpolate_color, pixel_to_argb, ScrollableStyle, SongStyle,
+        ease_out_cubic, interpolate_color, PickListStyle, PickMenuStyle, PlaybackButtonStyle,
+        ScrollableStyle, SongStyle,
     },
     BACKGROUND_TRANSITION_DURATION, BACKGROUND_TRANSITION_RATE,
 };
 
-use super::{PickListStyle, PickMenuStyle, PlaybackButtonStyle};
+#[cfg(feature = "thumbnails")]
+use ::{
+    image::{imageops::FilterType, io::Reader, GenericImageView},
+    material_colors::{color::Argb, quantize::QuantizerWsmeans, score::Score, theme::ThemeBuilder},
+};
 
+#[cfg(feature = "thumbnails")]
+use crate::styling::{argb_to_color, pixel_to_argb};
+
+#[allow(unused)]
 pub trait Interpolable {
     /// Interpolates between two colors, with a transition rate.
     fn interpolate(&self, other: &Self, t: f32) -> Self;
@@ -38,6 +45,7 @@ impl Default for BasicYtmrsScheme {
         }
     }
 }
+#[allow(unused)]
 impl BasicYtmrsScheme {
     pub fn to_background(&self) -> Background {
         Background::Gradient(Gradient::Linear(Linear::new(Degrees(180.0)).add_stops([
@@ -52,6 +60,7 @@ impl BasicYtmrsScheme {
         ])))
     }
 
+    #[cfg(feature = "thumbnails")]
     pub async fn from_image(path: PathBuf) -> Self {
         // I dont even know if wrapping this in a thread does anything but it
         // doesnt seem to block the UI so I'm happy
@@ -90,6 +99,7 @@ impl BasicYtmrsScheme {
         Self::from_argb(thread.join().unwrap()).await
     }
 
+    #[cfg(feature = "thumbnails")]
     pub async fn from_argb(argb: Argb) -> Self {
         let theme = ThemeBuilder::with_source(argb).build();
         let scheme = theme.schemes.dark;
@@ -104,7 +114,7 @@ impl BasicYtmrsScheme {
 
     pub fn into_full(self) -> FullYtmrsScheme {
         FullYtmrsScheme {
-            pick_list_style: Box::new(self.primary_color.into()),
+            pick_list_style: self.primary_color.into(),
             colors: self,
             ..Default::default()
         }
@@ -127,11 +137,11 @@ impl Interpolable for BasicYtmrsScheme {
 #[derive(Debug, Clone, Default)]
 pub struct FullYtmrsScheme {
     pub colors: BasicYtmrsScheme,
-    pub song_appearance: Box<SongStyle>,
-    pub scrollable_style: Box<ScrollableStyle>,
-    pub pick_list_style: Box<PickListStyle>,
-    pub pick_menu_style: Box<PickMenuStyle>,
-    pub playback_button_style: Box<PlaybackButtonStyle>,
+    pub song_appearance: SongStyle,
+    pub scrollable_style: ScrollableStyle,
+    pub pick_list_style: PickListStyle,
+    pub pick_menu_style: PickMenuStyle,
+    pub playback_button_style: PlaybackButtonStyle,
 }
 
 #[derive(Debug, Clone)]
@@ -152,6 +162,7 @@ pub struct Transitioning {
 #[derive(Debug, Clone, Default)]
 pub struct Finished(pub FullYtmrsScheme);
 
+#[allow(unused)]
 #[derive(Debug, Clone)]
 pub enum SchemeState {
     Started(Box<Started>),
@@ -174,6 +185,7 @@ impl SchemeState {
     }
 }
 
+#[allow(unused)]
 pub async fn transition_scheme(state: SchemeState) -> SchemeState {
     match state {
         SchemeState::Started(s) => {
@@ -207,7 +219,7 @@ pub async fn transition_scheme(state: SchemeState) -> SchemeState {
                 let transitioned = t.from.interpolate(&t.to, actual_progress);
                 SchemeState::Transitioning(Box::new(Transitioning {
                     value: FullYtmrsScheme {
-                        pick_list_style: Box::new(transitioned.primary_color.into()),
+                        pick_list_style: transitioned.primary_color.into(),
                         colors: transitioned,
                         ..t.value
                     },

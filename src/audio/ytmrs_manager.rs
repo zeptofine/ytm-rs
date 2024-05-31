@@ -21,6 +21,8 @@ impl Default for YTMRSAudioManager {
         }
     }
 }
+
+#[allow(unused)]
 impl YTMRSAudioManager {
     pub fn new(mixer: Mixer) -> Self {
         Self {

@@ -31,7 +31,7 @@ use crate::{
         ConstructorItem, OperationTracker, SongOpConstructor, SongOpTracker, TreeDirected,
         UpdateResult,
     },
-    styling::{BasicYtmrsScheme, FullYtmrsScheme},
+    styling::FullYtmrsScheme,
     user_input::UserInputs,
 };
 
@@ -70,7 +70,7 @@ impl Tickers {
     }
 }
 
-fn songs_path() -> PathBuf {
+fn song_metadata_path() -> PathBuf {
     let mut path = project_data_dir();
     path.push("songs.ndjson");
     path
@@ -90,7 +90,7 @@ pub struct YtmrsCache {
 impl Default for YtmrsCache {
     fn default() -> Self {
         Self {
-            songs: NDJsonCache::new(LineBasedReader::new(songs_path())),
+            songs: NDJsonCache::new(LineBasedReader::new(song_metadata_path())),
         }
     }
 }
@@ -121,15 +121,11 @@ pub enum YtmrsMsg {
 
     PlayingStatusTick,
 
-    CachingSuccess(HashSet<String>),
-    CachingFailure,
-
     RequestRecieved(RequestResult),
     RequestParsed(Box<YTResponseType>),
     RequestParseFailure(YTResponseError),
 
-    SetNewBackground(String, BasicYtmrsScheme),
-
+    // SetNewBackground(String, BasicYtmrsScheme),
     SearchWindowMessage(SWMessage),
     PlaylistMsg(PlaylistMessage),
     AudioTrackerMessage(TrackerMsg),
@@ -205,7 +201,6 @@ impl Ytmrs {
             .align_items(Alignment::Center)
             .spacing(20),
         )
-        // .explain(Color::WHITE)
     }
 
     pub fn update(&mut self, message: YtmrsMsg) -> Cm<YtmrsMsg> {
@@ -216,15 +211,15 @@ impl Ytmrs {
 
                 Cm::none()
             }
-            YtmrsMsg::SetNewBackground(_, _) => {
-                // // Save primary color to cache for future use
-                // let mut handle = self.settings.index.get(&key);
-                // if handle.get_color().is_none() {
-                //     handle.set_color(scheme.primary_color);
-                //     println!["Saved primary color: {:?}", scheme.primary_color];
-                // }
-                Cm::none()
-            }
+            // YtmrsMsg::SetNewBackground(_, _) => {
+            //     // // Save primary color to cache for future use
+            //     // let mut handle = self.settings.index.get(&key);
+            //     // if handle.get_color().is_none() {
+            //     //     handle.set_color(scheme.primary_color);
+            //     //     println!["Saved primary color: {:?}", scheme.primary_color];
+            //     // }
+            //     Cm::none()
+            // }
             YtmrsMsg::RequestRecieved(response) => match response {
                 RequestResult::Success(s) => {
                     Cm::perform(Ytmrs::parse_request(s), |result| match result {
@@ -238,8 +233,9 @@ impl Ytmrs {
                 }
             },
             YtmrsMsg::RequestParsed(response_type) => match *response_type {
-                YTResponseType::Song(_song) => {
+                YTResponseType::Song(song) => {
                     println!["Request is a song"];
+
                     todo!()
                 }
                 YTResponseType::Tab(t) => {
@@ -273,8 +269,8 @@ impl Ytmrs {
                             let new_songs = self.cache.songs.fetch(&keyset);
                             self.search.cache.extend(new_songs);
                         }
-                        Err(_) => {
-                            println!("Error caching songs");
+                        Err(e) => {
+                            println!("Error caching songs: {e:?}");
                         }
                     }
                     Cm::none()
@@ -427,17 +423,7 @@ impl Ytmrs {
 
                 Cm::none()
             }
-            YtmrsMsg::CachingSuccess(keys) => {
-                println!["Caching success!"];
-                let new_songs = self.cache.songs.fetch(&keys);
-                self.search.cache.extend(new_songs);
 
-                Cm::none()
-            }
-            YtmrsMsg::CachingFailure => {
-                println!["Caching failure!"];
-                Cm::none()
-            }
             YtmrsMsg::CacheTick => {
                 self.clean_cache();
                 Cm::none()

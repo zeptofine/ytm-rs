@@ -7,13 +7,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::{CacheReader, LineBasedReader};
-
-#[derive(Debug, Clone)]
-pub struct SourceItemPair<S, T>(
-    pub S, // source
-    pub T, // result
-);
+use super::{CacheReader, LineBasedReader, SourceItemPair};
 
 pub trait IDed<T> {
     fn id(&self) -> &T;
@@ -79,8 +73,6 @@ pub trait BufferedCache<K: Hash + Clone + Eq, V: IDed<K>> {
     fn new_arc(&self, id: &K) -> Arc<Mutex<V>>;
 }
 
-pub type LineItemPair<T> = SourceItemPair<String, T>;
-
 #[derive(Debug, Clone)]
 pub struct NDJsonCache<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> {
     map: ArcMap<String, T>,
@@ -88,6 +80,11 @@ pub struct NDJsonCache<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> 
 }
 impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> NDJsonCache<T> {
     pub fn new(cache: LineBasedReader) -> Self {
+        let parent = cache.filepath.parent().unwrap();
+        if !parent.exists() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+
         Self {
             reader: Arc::new(Mutex::new(cache)),
             map: Default::default(),
@@ -272,7 +269,7 @@ mod tests {
         assert_eq![unused.len(), 2];
         {
             let guards = sc.fetch(&[first_key.clone()].into_iter().collect());
-            assert![guards.len() > 0];
+            assert![!guards.is_empty()];
             println!["Captured guards: {:?}", guards];
             let song = guards[&first_key].lock();
             println!["Captured song: {:?}", song];
@@ -298,7 +295,7 @@ mod tests {
 
         {
             let reader = sc.reader.lock().unwrap();
-            let r = reader.clone().extend(songs.clone().into_iter(), false);
+            let r = reader.clone().extend(songs.clone(), false);
 
             println!["{r:?}"];
             assert![r.is_ok()];

@@ -3,6 +3,7 @@ use iced::{
     Command, Element,
 };
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{
     song_operations::{SongOpConstructor, SongOpMessage},
@@ -32,11 +33,21 @@ pub enum PlaylistMessage {
     Save,
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Playlist {
     pub id: uuid::Uuid,
     pub name: String,
     pub constructor: SongOpConstructor,
+}
+
+impl Default for Playlist {
+    fn default() -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name: Default::default(),
+            constructor: Default::default(),
+        }
+    }
 }
 impl Playlist {
     pub fn view(&self, scheme: &FullYtmrsScheme) -> Element<PlaylistMessage> {
