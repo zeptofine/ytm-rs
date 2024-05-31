@@ -44,6 +44,12 @@ impl SearchType {
             Self::Search(_) => vec![],
         }
     }
+    pub fn used_keys(&self) -> Vec<&String> {
+        match self {
+            SearchType::Song(ref song) => vec![song],
+            SearchType::Tab(ref v, _) | SearchType::Search(ref v) => v.iter().collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -75,10 +81,7 @@ impl Default for SearchWindow {
 }
 impl SearchWindow {
     pub fn used_keys(&self) -> Vec<&String> {
-        match self.search_type {
-            SearchType::Song(ref song) => vec![song],
-            SearchType::Tab(ref v, _) | SearchType::Search(ref v) => v.iter().collect(),
-        }
+        self.search_type.used_keys()
     }
 
     pub fn selected_keys(&self) -> Vec<&String> {
@@ -86,10 +89,7 @@ impl SearchWindow {
     }
 
     pub fn view(&self, scheme: &FullYtmrsScheme) -> Element<SWMessage> {
-        let keys: HashSet<String> = match self.search_type.clone() {
-            SearchType::Song(song) => vec![song].into_iter().collect(),
-            SearchType::Tab(v, _) | SearchType::Search(v) => v.into_iter().collect(),
-        };
+        let keys: HashSet<String> = self.used_keys().into_iter().cloned().collect();
 
         let cached_map: HashMap<_, _> = self.cache.get(&keys).collect();
 

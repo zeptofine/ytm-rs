@@ -8,7 +8,9 @@ use std::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::caching::{CacheReader, IDed, LineBasedReader, LineItemPair, SourceItemPair};
+use crate::caching::IDed;
+
+use super::{CacheReader, LineBasedReader, LineItemPair, SourceItemPair};
 
 fn random_uuid() -> String {
     Uuid::new_v4().to_string()

@@ -5,9 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use serde::{Deserialize, Serialize};
-
-use super::{CacheReader, LineBasedReader, SourceItemPair};
+use super::readers::CacheReader;
 
 pub trait IDed<T> {
     fn id(&self) -> &T;
@@ -63,7 +61,7 @@ pub trait BufferedCache<K: Hash + Clone + Eq, V: IDed<K>> {
         reader: Arc<Mutex<R>>,
         items: impl IntoIterator<Item = V>,
         overwrite: bool,
-    ) -> Result<(), async_std::io::Error> {
+    ) -> Result<(), std::io::Error> {
         let reader = reader.lock().unwrap();
         reader.clone().extend(items, overwrite)
     }
@@ -71,84 +69,6 @@ pub trait BufferedCache<K: Hash + Clone + Eq, V: IDed<K>> {
     fn cache_ids(&mut self, ids: &HashSet<K>) -> impl Iterator<Item = (K, Arc<Mutex<V>>)> + '_;
 
     fn new_arc(&self, id: &K) -> Arc<Mutex<V>>;
-}
-
-#[derive(Debug, Clone)]
-pub struct NDJsonCache<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> {
-    map: ArcMap<String, T>,
-    pub reader: Arc<Mutex<LineBasedReader>>,
-}
-impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> NDJsonCache<T> {
-    pub fn new(cache: LineBasedReader) -> Self {
-        let parent = cache.filepath.parent().unwrap();
-        if !parent.exists() {
-            std::fs::create_dir_all(parent).unwrap();
-        }
-
-        Self {
-            reader: Arc::new(Mutex::new(cache)),
-            map: Default::default(),
-        }
-    }
-}
-
-impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> BufferedCache<String, T>
-    for NDJsonCache<T>
-{
-    fn items<'a>(&'a self) -> impl Iterator<Item = (&'a String, &'a Arc<Mutex<T>>)>
-    where
-        T: 'a,
-    {
-        self.map.iter()
-    }
-
-    fn keys(&self) -> Keys<'_, String, Arc<Mutex<T>>> {
-        self.map.keys()
-    }
-
-    fn cache_size(&self) -> usize {
-        self.map.len()
-    }
-
-    fn drop_from_cache(&mut self, keys: impl IntoIterator<Item = String>) {
-        keys.into_iter().for_each(|key| {
-            self.map.remove(&key);
-        });
-    }
-
-    fn cache_ids(
-        &mut self,
-        ids: &HashSet<String>,
-    ) -> impl Iterator<Item = (String, Arc<Mutex<T>>)> + '_ {
-        (!ids.is_empty())
-            .then(|| {
-                let items: Vec<_> = {
-                    let reader = self.reader.lock().unwrap();
-                    let items = reader
-                        .read()
-                        .map(|iter| {
-                            iter.filter_map(move |SourceItemPair(_, item): SourceItemPair<_, T>| {
-                                let id = item.id().to_string();
-                                ids.contains(&id).then(|| (id, Arc::new(Mutex::new(item))))
-                            })
-                            .collect()
-                        })
-                        .unwrap_or_default();
-                    items
-                };
-                self.map.extend(items.clone());
-                items.into_iter().map(|(str, _)| {
-                    let arc = self.new_arc(&str);
-                    (str.to_string(), arc)
-                })
-            })
-            .into_iter()
-            .flatten()
-    }
-
-    fn new_arc(&self, id: &String) -> Arc<Mutex<T>> {
-        Arc::clone(&self.map[id])
-    }
 }
 
 #[derive(Default, Debug, Clone)]
@@ -187,7 +107,7 @@ impl<S: Hash + Eq + PartialEq + Clone, T: IDed<S>> CacheInterface<S, T> {
 #[cfg(test)]
 mod tests {
     use crate::caching::item_cache::BufferedCache;
-    use crate::caching::{CacheReader, IDed, LineBasedReader};
+    use crate::caching::readers::{CacheReader, LineBasedReader};
     use crate::{settings::SongKey, song::Song};
     use once_cell::sync::Lazy;
     use std::path::PathBuf;
@@ -209,7 +129,7 @@ mod tests {
         }))
     });
 
-    use super::NDJsonCache;
+    use crate::caching::{IDed, NDJsonCache};
 
     #[test]
     fn fetching() {
@@ -222,10 +142,7 @@ mod tests {
             .chain(missing_songs.clone().iter().map(|s| s.id.clone()))
             .collect();
 
-        let mut sc: NDJsonCache<Song> = NDJsonCache {
-            reader: READER.clone(),
-            map: Default::default(),
-        };
+        let mut sc: NDJsonCache<Song> = NDJsonCache::from(READER.clone());
 
         {
             let reader = sc.reader.lock().unwrap();
@@ -251,10 +168,7 @@ mod tests {
         let first_key = songs[0].id.clone();
         let keys: HashSet<SongKey> = songs.iter().map(|s| s.id.clone()).collect();
 
-        let mut sc: NDJsonCache<Song> = NDJsonCache {
-            reader: READER.clone(),
-            map: Default::default(),
-        };
+        let mut sc: NDJsonCache<Song> = NDJsonCache::from(READER.clone());
 
         {
             let reader = sc.reader.lock().unwrap();
@@ -288,10 +202,7 @@ mod tests {
         let songs = vec![Song::basic(), Song::basic()];
         let first_key = songs[0].id.clone(); // the drop target
 
-        let mut sc: NDJsonCache<Song> = NDJsonCache {
-            reader: READER.clone(),
-            map: Default::default(),
-        };
+        let mut sc: NDJsonCache<Song> = NDJsonCache::from(READER.clone());
 
         {
             let reader = sc.reader.lock().unwrap();

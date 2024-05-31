@@ -7,7 +7,9 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use super::{CacheReader, IDed, SourceItemPair};
+use crate::caching::IDed;
+
+use super::cache_reader::{CacheReader, SourceItemPair};
 
 pub type LineItemPair<T> = SourceItemPair<String, T>;
 

@@ -1,6 +1,6 @@
 use std::{collections::HashSet, hash::Hash};
 
-use super::IDed;
+use crate::caching::IDed;
 
 #[derive(Debug, Clone)]
 pub struct SourceItemPair<S, T>(

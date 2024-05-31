@@ -21,7 +21,7 @@ use reqwest::Url;
 use crate::{
     audio::{AudioProgressTracker, TrackerMsg, YTMRSAudioManager},
     backend_handler::{BackendHandler, BackendLaunchStatus, RequestResult},
-    caching::{BufferedCache, LineBasedReader, NDJsonCache},
+    caching::{readers::LineBasedReader, BufferedCache, NDJsonCache},
     playlist::PlaylistMessage,
     response_types::{YTResponseError, YTResponseType},
     search_window::{SWMessage, SearchType, SearchWindow},
@@ -73,6 +73,12 @@ impl Tickers {
 fn song_metadata_path() -> PathBuf {
     let mut path = project_data_dir();
     path.push("songs.ndjson");
+    path
+}
+
+fn song_data_path() -> PathBuf {
+    let mut path = project_data_dir();
+    path.push("songs");
     path
 }
 
