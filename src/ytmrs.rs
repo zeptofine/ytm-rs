@@ -21,7 +21,10 @@ use reqwest::Url;
 use crate::{
     audio::{AudioProgressTracker, TrackerMsg, YTMRSAudioManager},
     backend_handler::{BackendHandler, BackendLaunchStatus, RequestResult},
-    caching::{readers::LineBasedReader, BufferedCache, NDJsonCache},
+    caching::{
+        readers::{FolderBasedReader, LineBasedReader},
+        BufferedCache, FolderCache, NDJsonCache, SoundData,
+    },
     playlist::PlaylistMessage,
     response_types::{YTResponseError, YTResponseType},
     search_window::{SWMessage, SearchType, SearchWindow},
@@ -76,7 +79,7 @@ fn song_metadata_path() -> PathBuf {
     path
 }
 
-fn song_data_path() -> PathBuf {
+fn song_audio_path() -> PathBuf {
     let mut path = project_data_dir();
     path.push("songs");
     path
@@ -90,13 +93,15 @@ fn playlists_directory() -> PathBuf {
 
 #[derive(Debug)]
 pub struct YtmrsCache {
-    pub songs: NDJsonCache<Song>,
+    pub song_metadata: NDJsonCache<Song>,
+    pub sounds: FolderCache<SoundData>,
 }
 
 impl Default for YtmrsCache {
     fn default() -> Self {
         Self {
-            songs: NDJsonCache::new(LineBasedReader::new(song_metadata_path())),
+            song_metadata: NDJsonCache::new(LineBasedReader::new(song_metadata_path())),
+            sounds: FolderCache::new(FolderBasedReader::new(song_audio_path())),
         }
     }
 }
@@ -152,7 +157,7 @@ impl Ytmrs {
         self.settings
             .playlist
             .constructor
-            .update_cache(&mut self.cache.songs);
+            .update_cache(&mut self.cache.song_metadata);
 
         let mut backend = self.backend_handler.lock().unwrap();
 
@@ -270,9 +275,10 @@ impl Ytmrs {
                     let keyset: HashSet<_> = keys.into_iter().collect();
 
                     // Add the songs to the file cache
-                    match NDJsonCache::extend(self.cache.songs.reader.clone(), songs, true) {
+                    match NDJsonCache::extend(self.cache.song_metadata.reader.clone(), songs, true)
+                    {
                         Ok(_) => {
-                            let new_songs = self.cache.songs.fetch(&keyset);
+                            let new_songs = self.cache.song_metadata.fetch(&keyset);
                             self.search.cache.extend(new_songs);
                         }
                         Err(e) => {
@@ -419,13 +425,13 @@ impl Ytmrs {
                         self.settings
                             .playlist
                             .constructor
-                            .update_cache(&mut self.cache.songs);
+                            .update_cache(&mut self.cache.song_metadata);
                     }
                 }
                 self.settings
                     .playlist
                     .constructor
-                    .update_cache(&mut self.cache.songs);
+                    .update_cache(&mut self.cache.song_metadata);
 
                 Cm::none()
             }
@@ -491,12 +497,12 @@ impl Ytmrs {
         };
 
         if let Some(parent) = item_at_id {
-            parent.update_cache(&mut self.cache.songs);
+            parent.update_cache(&mut self.cache.song_metadata);
         } else {
             self.settings
                 .playlist
                 .constructor
-                .update_cache(&mut self.cache.songs);
+                .update_cache(&mut self.cache.song_metadata);
         }
     }
 
@@ -519,14 +525,20 @@ impl Ytmrs {
         println!["Infinite loop type: {:?}", song_op.loop_type()];
         println!["Is valid: {:?}", song_op.is_valid()];
         if let Some(ConstructorItem::Song(k, _)) = item {
-            let songs = self.cache.songs.fetch(&HashSet::from([k.clone()]));
+            let songs = self.cache.song_metadata.fetch(&HashSet::from([k.clone()]));
             if !songs.is_empty() {
                 println!["Song found in cache"];
                 let song = &songs[k].clone();
                 let song = song.lock().unwrap();
                 println!["Song: {:?}", song];
                 match &song.song_cache_id {
-                    Some(id) => { // use the id to find the song in the song cache and play it
+                    Some(id) => {
+                        // use the id to find the song in the song cache and play it
+                        let cached_sounds = self.cache.sounds.fetch(&HashSet::from([id.clone()]));
+                        if !cached_sounds.is_empty() {
+                            let sound = &cached_sounds[id].clone();
+                            println!["Sound: {:?}", sound];
+                        }
                     }
                     None => { // Download the song, add it to the cache, and play it
                     }
@@ -566,19 +578,24 @@ impl Ytmrs {
             self.settings
                 .playlist
                 .constructor
-                .update_cache(&mut self.cache.songs);
+                .update_cache(&mut self.cache.song_metadata);
             let new_opcache = self.settings.playlist.constructor.cache_size();
             let diff = new_opcache as isize - opcache as isize;
             println!["   {:?} arcs changed in constructor", diff];
         }
 
-        let unused: Vec<String> = self.cache.songs.find_unused_items().cloned().collect();
+        let unused: Vec<String> = self
+            .cache
+            .song_metadata
+            .find_unused_items()
+            .cloned()
+            .collect();
         let unused_count = unused.len();
-        self.cache.songs.drop_from_cache(unused);
+        self.cache.song_metadata.drop_from_cache(unused);
         println!["   {:?} songs dropped from cache", unused_count];
         println![
             "   {:?} songs currently in cache",
-            self.cache.songs.cache_size()
+            self.cache.song_metadata.cache_size()
         ]
     }
 

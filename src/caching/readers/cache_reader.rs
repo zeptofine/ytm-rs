@@ -20,7 +20,7 @@ where
 
     fn read_filter(
         &self,
-        f: HashSet<IDT>,
+        f: &HashSet<IDT>,
     ) -> Result<impl Iterator<Item = SourceItemPair<SrcT, OutT>>, std::io::Error> {
         Ok(self
             .read()?

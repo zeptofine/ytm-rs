@@ -23,8 +23,10 @@ impl<T> FileData<T> {
     pub fn new(id: String, data: T) -> Self {
         FileData(id, data)
     }
+    pub fn into_data(self) -> T {
+        self.1
+    }
 }
-
 impl<T> IDed<String> for FileData<T> {
     fn id(&self) -> &String {
         &self.0
@@ -72,7 +74,7 @@ impl CacheReader<String, String, FileData<Vec<u8>>> for FolderBasedReader {
     // Finds the files, but only actually reads files that have the right id
     fn read_filter(
         &self,
-        filter: HashSet<String>,
+        filter: &HashSet<String>,
     ) -> Result<impl Iterator<Item = SourceItemPair<String, FileData<Vec<u8>>>>, std::io::Error>
     {
         Ok(self.index_reader.read()?.filter_map(
