@@ -434,21 +434,21 @@ impl OperationTracker for SongOpTracker {
                 children,
             } => {
                 *current = 0;
-                randomized_indices.shuffle(&mut thread_rng());
+                randomized_indices.shuffle(&mut thread_rng()); // re-randomize the indices
                 children[randomized_indices[*current]].to_start();
             }
             SongOpTracker::SingleRandom {
                 current: index,
                 children,
             } => {
-                *index = thread_rng().gen_range(0..children.len());
+                *index = thread_rng().gen_range(0..children.len()); // randomize the index
                 children[*index].to_start();
             }
             SongOpTracker::InfiniteRandom {
                 current: index,
                 children,
             } => {
-                *index = thread_rng().gen_range(0..children.len());
+                *index = thread_rng().gen_range(0..children.len()); // randomize the index
                 children[*index].to_start();
             }
         }
@@ -492,8 +492,8 @@ impl OperationTracker for SongOpTracker {
     }
 }
 impl SongOpTracker {
-    fn map(ops: &[RecursiveSongOp]) -> Vec<SongOpTracker> {
-        ops.iter().map(Self::from).collect()
+    fn map<C: FromIterator<SongOpTracker>>(ops: &[RecursiveSongOp]) -> C {
+        ops.iter().map(Self::from).collect::<C>()
     }
 
     pub fn from_song_op(song_op: &RecursiveSongOp, indices: VecDeque<usize>) -> Self {

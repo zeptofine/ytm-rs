@@ -1,4 +1,4 @@
-use std::{fmt::Debug, path::PathBuf};
+use std::fmt::Debug;
 
 use kittyaudio::{Mixer, Sound, SoundHandle};
 
@@ -68,6 +68,12 @@ impl YTMRSAudioManager {
         }
     }
 
+    pub fn seek_to_end(&mut self) {
+        if let Some(song) = &mut self.current_song {
+            song.seek_to_end();
+        }
+    }
+
     pub fn elapsed(&self) -> Option<f32> {
         self.current_song
             .as_ref()
@@ -80,11 +86,8 @@ impl YTMRSAudioManager {
             .map(|s| s.duration().as_secs_f32())
     }
 
-    pub fn play_once(&mut self, song: &PathBuf) {
-        let sound = Sound::from_path(song).unwrap();
-        if let Some(song) = &self.current_song {
-            song.seek_to_end();
-        }
+    pub fn play_once(&mut self, sound: Sound) {
+        self.seek_to_end();
         self.current_song = Some(self.mixer.play(sound));
     }
 }

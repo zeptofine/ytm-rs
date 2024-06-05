@@ -1,7 +1,8 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs::{File, OpenOptions},
+    fs::File,
     io::{Read, Write},
+    os::windows::fs::MetadataExt,
     path::PathBuf,
 };
 
@@ -16,7 +17,7 @@ fn random_uuid() -> String {
     Uuid::new_v4().to_string()
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct FileData<T>(String, T);
 
 impl<T> FileData<T> {
@@ -42,9 +43,14 @@ pub struct FolderBasedReader {
 impl FolderBasedReader {
     pub fn new(filepath: PathBuf) -> Self {
         let linepath = filepath.join("index").with_extension("ndjson");
+        if !filepath.exists() {
+            std::fs::create_dir_all(&filepath).unwrap();
+        }
+
         if !linepath.exists() {
             // touch
-            let _ = OpenOptions::new().truncate(true).open(&linepath);
+            println!["Creating index file at {:?}...", linepath];
+            println!["{:?}", File::create(&linepath)];
         }
         Self {
             filepath,
@@ -63,8 +69,10 @@ impl CacheReader<String, String, FileData<Vec<u8>>> for FolderBasedReader {
             |SourceItemPair(id, FileData(uuid, path_id)): LineItemPair<FileData<PathBuf>>| {
                 let actual = self.filepath.join(path_id);
 
-                let mut buffer = vec![];
                 let mut file = File::open(actual).ok()?;
+                let mut buffer = Vec::with_capacity(
+                    file.metadata().map(|m| m.file_size() as usize).unwrap_or(0), // approximate the file size in memory
+                );
                 let _ = file.read_to_end(&mut buffer);
                 Some(SourceItemPair(id, FileData(uuid, buffer)))
             },
@@ -84,10 +92,15 @@ impl CacheReader<String, String, FileData<Vec<u8>>> for FolderBasedReader {
                 }
 
                 let actual = self.filepath.join(path_id);
-                let mut buffer = vec![];
-                let mut file = File::open(actual).ok()?;
-                let _ = file.read_to_end(&mut buffer);
-                Some(SourceItemPair(id, FileData(uuid, buffer)))
+                let data = {
+                    let mut file = File::open(actual).ok()?;
+                    let mut buffer = Vec::with_capacity(
+                        file.metadata().map(|m| m.file_size() as usize).unwrap_or(0), // approximate the file size in memory
+                    );
+                    let _ = file.read_to_end(&mut buffer);
+                    buffer
+                };
+                Some(SourceItemPair(id, FileData(uuid, data)))
             },
         ))
     }

@@ -10,7 +10,7 @@ use iced_drop::{droppable, zones_on_point};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    caching::CacheInterface,
+    caching::{CacheInterface, RwMap},
     song::{Song, SongData},
     styling::FullYtmrsScheme,
     user_input::SelectionMode,
@@ -22,32 +22,80 @@ pub enum SearchType {
     Tab(Vec<String>, #[serde(skip)] SelectionMode),
     Search(Vec<String>),
 }
+
 impl SearchType {
     pub fn new_tab(songs: Vec<String>) -> Self {
         Self::Tab(songs, SelectionMode::None)
     }
 
-    pub fn selected_keys(&self) -> Vec<&String> {
+    pub fn selected_keys(&self) -> Option<Vec<&String>> {
         match self {
-            Self::Song(s) => vec![&s],
+            Self::Song(s) => Some(vec![&s]),
             Self::Tab(s, mode) => match mode {
-                SelectionMode::None => vec![],
-                SelectionMode::Single(idx) => match s.get(*idx) {
-                    Some(k) => vec![k],
-                    None => vec![],
-                },
-                SelectionMode::Multiple(v) => v.iter().filter_map(|idx| s.get(*idx)).collect(),
+                SelectionMode::None => None,
+                SelectionMode::Single(idx) => s.get(*idx).map(|k| vec![k]),
+                SelectionMode::Multiple(v) => {
+                    Some(v.iter().filter_map(|idx| s.get(*idx)).collect())
+                }
                 SelectionMode::Range { first: _, r } => {
-                    r.clone().filter_map(|idx| s.get(idx)).collect()
+                    Some(r.clone().filter_map(|idx| s.get(idx)).collect())
                 }
             },
-            Self::Search(_) => vec![],
+            Self::Search(_) => todo!(),
         }
     }
+
     pub fn used_keys(&self) -> Vec<&String> {
         match self {
             SearchType::Song(ref song) => vec![song],
             SearchType::Tab(ref v, _) | SearchType::Search(ref v) => v.iter().collect(),
+        }
+    }
+
+    pub fn view(
+        &self,
+        scheme: &FullYtmrsScheme,
+        cached_map: RwMap<String, Song>,
+    ) -> Element<SWMessage> {
+        match &self {
+            SearchType::Song(_) => {
+                todo!()
+            }
+            SearchType::Tab(v, mode) => {
+                let songs = v.iter().enumerate().map(|(idx, key)| {
+                    let selected = mode.contains(idx);
+                    let style = scheme.song_appearance.update(selected);
+                    droppable(
+                        Container::new(
+                            Element::new(match cached_map.get(key) {
+                                Some(songc) => {
+                                    let song = songc.read().unwrap();
+                                    song.as_data().row(true, false)
+                                }
+                                None => SongData::mystery_with_id(key.clone()).row(true, false),
+                            })
+                            .map(move |_| SWMessage::SelectSong(idx)),
+                        )
+                        .style(move |_| style),
+                    )
+                    .on_drop(move |pt, rec| SWMessage::Drop(key.clone(), pt, rec))
+                    .on_click(SWMessage::SimpleSelectSong(idx))
+                    .on_single_click(SWMessage::SelectSong(idx))
+                    .into()
+                });
+
+                Element::new(
+                    scrollable(
+                        Container::new(Column::with_children(songs).width(Length::Fill))
+                            .align_x(Horizontal::Left)
+                            .max_width(400)
+                            .padding(0),
+                    )
+                    .width(Length::Fill)
+                    .style(scheme.scrollable_style.clone().update()),
+                )
+            }
+            SearchType::Search(_) => todo!(),
         }
     }
 }
@@ -84,7 +132,7 @@ impl SearchWindow {
         self.search_type.used_keys()
     }
 
-    pub fn selected_keys(&self) -> Vec<&String> {
+    pub fn selected_keys(&self) -> Option<Vec<&String>> {
         self.search_type.selected_keys()
     }
 
@@ -97,50 +145,7 @@ impl SearchWindow {
             .on_input(SWMessage::SearchQueryChanged)
             .on_submit(SWMessage::SearchQuerySubmitted);
 
-        column![
-            search_query,
-            match &self.search_type {
-                SearchType::Song(_) => {
-                    todo!()
-                }
-                SearchType::Tab(v, mode) => {
-                    let songs = v.iter().enumerate().map(|(idx, key)| {
-                        let selected = mode.contains(idx);
-                        let style = scheme.song_appearance.update(selected);
-                        droppable(
-                            Container::new(
-                                Element::new(match cached_map.get(key) {
-                                    Some(songc) => {
-                                        let song = songc.lock().unwrap();
-                                        song.as_data().row(true, false)
-                                    }
-                                    None => SongData::mystery_with_id(key.clone()).row(true, false),
-                                })
-                                .map(move |_| SWMessage::SelectSong(idx)),
-                            )
-                            .style(move |_| style),
-                        )
-                        .on_drop(move |pt, rec| SWMessage::Drop(key.clone(), pt, rec))
-                        .on_click(SWMessage::SimpleSelectSong(idx))
-                        .on_single_click(SWMessage::SelectSong(idx))
-                        .into()
-                    });
-
-                    Element::new(
-                        scrollable(
-                            Container::new(Column::with_children(songs).width(Length::Fill))
-                                .align_x(Horizontal::Left)
-                                .max_width(400)
-                                .padding(0),
-                        )
-                        .width(Length::Fill)
-                        .style(scheme.scrollable_style.clone().update()),
-                    )
-                }
-                SearchType::Search(_) => todo!(),
-            }
-        ]
-        .into()
+        column![search_query, self.search_type.view(scheme, cached_map)].into()
     }
 
     pub fn update(&mut self, msg: SWMessage, mods: &Modifiers) -> Cm<SWMessage> {
@@ -167,7 +172,7 @@ impl SearchWindow {
                 None,
                 None,
             ),
-            SWMessage::HandleZones(_, _) => todo!(),
+            SWMessage::HandleZones(_, _) => unreachable!(),
             SWMessage::SearchQueryChanged(s) => {
                 self.query = s;
                 Cm::none()

@@ -1,18 +1,18 @@
 use std::{
     collections::{hash_map::Keys, HashSet},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
 
 use serde::{Deserialize, Serialize};
 
 use super::{
     readers::{CacheReader, LineBasedReader, SourceItemPair},
-    ArcMap, BufferedCache, IDed,
+    BufferedCache, IDed, RwMap,
 };
 
 #[derive(Debug, Clone)]
 pub struct NDJsonCache<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> {
-    map: ArcMap<String, T>,
+    map: RwMap<String, T>,
     pub reader: Arc<Mutex<LineBasedReader>>,
 }
 impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> NDJsonCache<T> {
@@ -42,14 +42,14 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> From<Arc<Mutex<Lin
 impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> BufferedCache<String, T>
     for NDJsonCache<T>
 {
-    fn items<'a>(&'a self) -> impl Iterator<Item = (&'a String, &'a Arc<Mutex<T>>)>
+    fn items<'a>(&'a self) -> impl Iterator<Item = (&'a String, &'a Arc<RwLock<T>>)>
     where
         T: 'a,
     {
         self.map.iter()
     }
 
-    fn keys(&self) -> Keys<'_, String, Arc<Mutex<T>>> {
+    fn keys(&self) -> Keys<'_, String, Arc<RwLock<T>>> {
         self.map.keys()
     }
 
@@ -66,7 +66,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> BufferedCache<Stri
     fn cache_ids(
         &mut self,
         ids: &HashSet<String>,
-    ) -> impl Iterator<Item = (String, Arc<Mutex<T>>)> + '_ {
+    ) -> impl Iterator<Item = (String, Arc<RwLock<T>>)> + '_ {
         (!ids.is_empty())
             .then(|| {
                 let items: Vec<_> = {
@@ -76,7 +76,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> BufferedCache<Stri
                         .map(|iter| {
                             iter.filter_map(move |SourceItemPair(_, item): SourceItemPair<_, T>| {
                                 let id = item.id().to_string();
-                                ids.contains(&id).then(|| (id, Arc::new(Mutex::new(item))))
+                                ids.contains(&id).then(|| (id, Arc::new(RwLock::new(item))))
                             })
                             .collect()
                         })
@@ -85,7 +85,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> BufferedCache<Stri
                 };
                 self.map.extend(items.clone());
                 items.into_iter().map(|(str, _)| {
-                    let arc = self.new_arc(&str);
+                    let arc = self.new_rw(&str);
                     (str.to_string(), arc)
                 })
             })
@@ -93,7 +93,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> BufferedCache<Stri
             .flatten()
     }
 
-    fn new_arc(&self, id: &String) -> Arc<Mutex<T>> {
+    fn new_rw(&self, id: &String) -> Arc<RwLock<T>> {
         Arc::clone(&self.map[id])
     }
 }

@@ -75,7 +75,7 @@ impl Default for AudioProgressTracker {
             elapsed: None,
             total: None,
             paused: false,
-            volume: 1.,
+            volume: 1000.,
             next_available: true,
             previous_available: false,
         }

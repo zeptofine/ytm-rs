@@ -25,10 +25,8 @@ mod song;
 mod song_list;
 mod song_operations;
 mod styling;
-
 #[cfg(feature = "thumbnails")]
 mod thumbnails;
-
 mod user_input;
 mod ytmrs;
 
@@ -36,8 +34,8 @@ use crate::{
     backend_handler::{BackendHandler, BackendLaunchStatus, ConnectionMode},
     settings::{LoadError, SaveError, YTMRSettings},
     styling::SchemeState,
+    ytmrs::{Ytmrs, YtmrsMsg},
 };
-use ytmrs::{Ytmrs, YtmrsMsg};
 
 pub const BACKGROUND_TRANSITION_DURATION: Duration = Duration::from_millis(500);
 pub const BACKGROUND_TRANSITION_RATE: Duration = Duration::from_millis(1000 / 20); // ~15fps

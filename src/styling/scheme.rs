@@ -1,4 +1,4 @@
-use std::{path::PathBuf, thread, time::SystemTime};
+use std::{thread, time::SystemTime};
 
 use iced::{
     gradient::{ColorStop, Linear},
@@ -17,6 +17,7 @@ use crate::{
 use ::{
     image::{imageops::FilterType, io::Reader, GenericImageView},
     material_colors::{color::Argb, quantize::QuantizerWsmeans, score::Score, theme::ThemeBuilder},
+    std::path::PathBuf,
 };
 
 #[cfg(feature = "thumbnails")]

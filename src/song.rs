@@ -18,7 +18,11 @@ use iced::widget::Svg;
 #[cfg(feature = "svg")]
 use crate::audio::PLAY_SVG;
 
-use crate::{caching::IDed, response_types::UrlString, settings::SongKey};
+use crate::{
+    caching::IDed,
+    response_types::{RequestedDownload, UrlString},
+    settings::SongKey,
+};
 
 fn r(len: usize) -> String {
     thread_rng()
@@ -49,13 +53,9 @@ pub struct Song {
     pub tags: Vec<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default)]
-    pub thumbnail_cache_id: Option<String>,
+    pub requested_downloads: Option<Vec<RequestedDownload>>,
     #[serde(skip)]
     pub thumbnail_handle: Option<iced_image::Handle>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default)]
-    pub song_cache_id: Option<String>,
 }
 
 impl Song {
@@ -84,9 +84,10 @@ impl Song {
                 .cycle()
                 .take(thread_rng().gen_range(0..=5))
                 .collect(),
-            thumbnail_cache_id: None,
+            requested_downloads: None,
+            // thumbnail_cache_id: None,
             thumbnail_handle: None,
-            song_cache_id: None,
+            // song_cache_id: None,
         }
     }
 

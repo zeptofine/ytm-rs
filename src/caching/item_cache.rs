@@ -2,7 +2,7 @@ use std::{
     collections::{hash_map::Keys, HashMap, HashSet},
     fmt::Debug,
     hash::Hash,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
 
 use super::readers::CacheReader;
@@ -11,15 +11,15 @@ pub trait IDed<T> {
     fn id(&self) -> &T;
 }
 
-pub type ArcMap<K, V> = HashMap<K, Arc<Mutex<V>>>;
+pub type RwMap<K, V> = HashMap<K, Arc<RwLock<V>>>;
 
-pub trait BufferedCache<K: Hash + Clone + Eq, V: IDed<K>> {
-    fn items<'a>(&'a self) -> impl Iterator<Item = (&'a K, &'a Arc<Mutex<V>>)>
+pub trait BufferedCache<K: Hash + Clone + Eq + Debug, V: IDed<K>> {
+    fn items<'a>(&'a self) -> impl Iterator<Item = (&'a K, &'a Arc<RwLock<V>>)>
     where
         K: 'a,
         V: 'a;
 
-    fn keys(&self) -> Keys<'_, K, Arc<Mutex<V>>>;
+    fn keys(&self) -> Keys<'_, K, Arc<RwLock<V>>>;
 
     fn cache_size(&self) -> usize;
 
@@ -36,7 +36,7 @@ pub trait BufferedCache<K: Hash + Clone + Eq, V: IDed<K>> {
 
     fn drop_from_cache(&mut self, keys: impl IntoIterator<Item = K>);
 
-    fn fetch(&mut self, ids: &HashSet<K>) -> ArcMap<K, V> {
+    fn fetch(&mut self, ids: &HashSet<K>) -> RwMap<K, V> {
         let cs_keys: HashSet<K> = self.keys().cloned().collect();
 
         match cs_keys.is_empty() {
@@ -50,7 +50,7 @@ pub trait BufferedCache<K: Hash + Clone + Eq, V: IDed<K>> {
                     .into_iter()
                     .flatten();
                 ids.intersection(&cs_keys) // Already in cache
-                    .map(|k| (k.clone(), self.new_arc(k)))
+                    .map(|k| (k.clone(), self.new_rw(k)))
                     .chain(get_cache)
                     .collect()
             }
@@ -66,30 +66,33 @@ pub trait BufferedCache<K: Hash + Clone + Eq, V: IDed<K>> {
         reader.clone().extend(items, overwrite)
     }
 
-    fn cache_ids(&mut self, ids: &HashSet<K>) -> impl Iterator<Item = (K, Arc<Mutex<V>>)> + '_;
+    fn cache_ids(&mut self, ids: &HashSet<K>) -> impl Iterator<Item = (K, Arc<RwLock<V>>)> + '_;
 
-    fn new_arc(&self, id: &K) -> Arc<Mutex<V>>;
+    fn new_rw(&self, id: &K) -> Arc<RwLock<V>>;
 }
 
 #[derive(Default, Debug, Clone)]
 pub struct CacheInterface<K: Hash + Eq + PartialEq + Clone, V: ?Sized> {
-    cache: HashMap<K, Arc<Mutex<V>>>,
+    cache: RwMap<K, V>,
     keys: HashSet<K>,
 }
 
 impl<S: Hash + Eq + PartialEq + Clone, T: IDed<S>> CacheInterface<S, T> {
-    pub fn get<'a>(&'a self, ids: &'a HashSet<S>) -> impl Iterator<Item = (S, Arc<Mutex<T>>)> + '_ {
+    pub fn get<'a>(
+        &'a self,
+        ids: &'a HashSet<S>,
+    ) -> impl Iterator<Item = (S, Arc<RwLock<T>>)> + '_ {
         let existing = ids.intersection(&self.keys).cloned();
         existing.map(|k| (k.clone(), Arc::clone(&self.cache[&k])))
     }
 
-    pub fn extend(&mut self, items: ArcMap<S, T>) {
+    pub fn extend(&mut self, items: RwMap<S, T>) {
         let new_keys: HashSet<S> = items.keys().cloned().collect();
         self.keys = self.keys.union(&new_keys).cloned().collect();
         self.cache.extend(items)
     }
 
-    pub fn replace(&mut self, cache: ArcMap<S, T>) {
+    pub fn replace(&mut self, cache: RwMap<S, T>) {
         self.keys = cache.keys().cloned().collect();
         self.cache = cache;
     }
@@ -97,6 +100,10 @@ impl<S: Hash + Eq + PartialEq + Clone, T: IDed<S>> CacheInterface<S, T> {
     /// Returns the number of elements in the cache
     pub fn len(&self) -> usize {
         self.keys.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn get_keys(&self) -> &HashSet<S> {
@@ -109,6 +116,7 @@ mod tests {
     use crate::caching::item_cache::BufferedCache;
     use crate::caching::readers::{CacheReader, LineBasedReader};
     use crate::{settings::SongKey, song::Song};
+
     use once_cell::sync::Lazy;
     use std::path::PathBuf;
     use std::sync::Mutex;
@@ -185,7 +193,7 @@ mod tests {
             let guards = sc.fetch(&[first_key.clone()].into_iter().collect());
             assert![!guards.is_empty()];
             println!["Captured guards: {:?}", guards];
-            let song = guards[&first_key].lock();
+            let song = guards[&first_key].read();
             println!["Captured song: {:?}", song];
 
             unused = sc.find_unused_items().collect();

@@ -61,6 +61,18 @@ pub struct YTMSearch {
     pub entries: Vec<YTSearchEntry>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestedDownload {
+    pub asr: usize,
+    pub filesize: usize,
+    pub audio_channels: u8,
+    pub quality: f32,
+    pub filesize_approx: usize,
+    pub audio_ext: String,
+    pub format: String,
+    pub filepath: String,
+}
+
 #[derive(Debug, Clone)]
 pub enum YTResponseError {
     ExtractionErr,
@@ -87,15 +99,17 @@ struct ExtractorKey {
 }
 
 impl YTResponseType {
-    pub fn new(response: String) -> Result<Self, YTResponseError> {
-        let extractor: ExtractorKey = serde_json::from_str(&response)?;
+    pub fn new(full_response: String) -> Result<Self, YTResponseError> {
+        let extractor: ExtractorKey = serde_json::from_str(&full_response)?;
         let key = extractor.extractor_key.borrow();
         println!["{key}"];
 
         match key {
-            "Youtube" => Ok(YTResponseType::Song(serde_json::from_str(&response)?)),
-            "YoutubeTab" => Ok(YTResponseType::Tab(serde_json::from_str(&response)?)),
-            "YoutubeMusicSearchURL" => Ok(YTResponseType::Search(serde_json::from_str(&response)?)),
+            "Youtube" => Ok(YTResponseType::Song(serde_json::from_str(&full_response)?)),
+            "YoutubeTab" => Ok(YTResponseType::Tab(serde_json::from_str(&full_response)?)),
+            "YoutubeMusicSearchURL" => Ok(YTResponseType::Search(serde_json::from_str(
+                &full_response,
+            )?)),
             _ => {
                 println!["Unrecognized key: {key}"];
                 Err(YTResponseError::ExtractionErr)

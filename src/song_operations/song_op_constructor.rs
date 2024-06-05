@@ -206,7 +206,6 @@ pub enum UpdateResult {
     Cm(Cm<SongOpMessage>),
     SongClicked(WId),
     Move(WId, WId), // from, to
-    None,
 }
 
 fn verify_n(txt: String) -> SongOpMessage {
@@ -354,7 +353,7 @@ impl SongOpConstructor {
                 let data = {
                     match map.get(key) {
                         Some(arc) => {
-                            let x = arc.lock().unwrap();
+                            let x = arc.read().unwrap();
                             x.as_data()
                         }
                         None => SongData::mystery_with_id(key.clone()),
@@ -423,13 +422,12 @@ impl SongOpConstructor {
         self.list.insert(idx, item)
     }
 
-    pub fn update(&mut self, msg: SongOpMessage) -> UpdateResult {
+    pub fn update(&mut self, msg: SongOpMessage) -> Option<UpdateResult> {
         match msg {
-            SongOpMessage::CloseSelf => UpdateResult::Cm(Cm::none()),
-
+            SongOpMessage::CloseSelf => None,
             SongOpMessage::Remove(idx) => {
                 self.list.remove(idx);
-                UpdateResult::None
+                None
             }
             SongOpMessage::ItemMessage(idx, msg) => {
                 let item = &mut self.list[idx];
@@ -441,18 +439,26 @@ impl SongOpConstructor {
                         CItemMessage::Operation(somsg) => match *somsg {
                             SongOpMessage::CloseSelf => {
                                 self.list.remove(idx);
-                                UpdateResult::None
+                                None
                             }
                             _ => match op.update(*somsg) {
-                                UpdateResult::Cm(cm) => UpdateResult::Cm(cm.map(move |msg| {
-                                    SongOpMessage::ItemMessage(
-                                        idx,
-                                        CItemMessage::Operation(Box::new(msg)),
-                                    )
-                                })),
-                                UpdateResult::SongClicked(id) => UpdateResult::SongClicked(id),
-                                UpdateResult::Move(from, to) => UpdateResult::Move(from, to),
-                                UpdateResult::None => UpdateResult::None,
+                                Some(result) => match result {
+                                    UpdateResult::Cm(cm) => {
+                                        Some(UpdateResult::Cm(cm.map(move |msg| {
+                                            SongOpMessage::ItemMessage(
+                                                idx,
+                                                CItemMessage::Operation(Box::new(msg)),
+                                            )
+                                        })))
+                                    }
+                                    UpdateResult::SongClicked(id) => {
+                                        Some(UpdateResult::SongClicked(id))
+                                    }
+                                    UpdateResult::Move(from, to) => {
+                                        Some(UpdateResult::Move(from, to))
+                                    }
+                                },
+                                None => None,
                             },
                         },
                     },
@@ -463,53 +469,55 @@ impl SongOpConstructor {
                     .push(ConstructorItem::Operation(SongOpConstructor::default()));
                 println!["Group added"];
                 println!["{:#?}", self.list];
-                UpdateResult::None
+                None
             }
             SongOpMessage::ChangeOperation(op) => {
                 self.operation = op;
-                UpdateResult::None
+                None
             }
-            SongOpMessage::Dropped(original_id, point, _rec) => UpdateResult::Cm(zones_on_point(
-                move |zones| SongOpMessage::HandleZones(original_id.clone(), zones),
-                point,
-                None,
-                None,
-            )),
+            SongOpMessage::Dropped(original_id, point, _rec) => {
+                Some(UpdateResult::Cm(zones_on_point(
+                    move |zones| SongOpMessage::HandleZones(original_id.clone(), zones),
+                    point,
+                    None,
+                    None,
+                )))
+            }
             SongOpMessage::HandleZones(original_id, zones) => {
                 // TODO: This assumes the last zone was the desired target
                 match zones.last() {
                     Some((target_id, _rec)) => {
                         if original_id != *target_id {
-                            UpdateResult::Move(original_id, target_id.clone())
+                            Some(UpdateResult::Move(original_id, target_id.clone()))
                         } else {
-                            UpdateResult::None
+                            None
                         }
                     }
-                    None => UpdateResult::None,
+                    None => None,
                 }
             }
             SongOpMessage::Collapse => {
                 self.collapsed = true;
-                UpdateResult::None
+                None
             }
             SongOpMessage::Uncollapse => {
                 self.collapsed = false;
-                UpdateResult::None
+                None
             }
             SongOpMessage::ChangeN(n) => {
                 self.n = n;
-                UpdateResult::None
+                None
             }
 
             SongOpMessage::Generate => {
                 let ops = self.build();
                 println!["{:#?}", ops];
-                UpdateResult::None
+                None
             }
 
             // Pointer for things like inputting a non-integer value into the "N" field.
-            SongOpMessage::Null => UpdateResult::None,
-            SongOpMessage::SongClicked(wid) => UpdateResult::SongClicked(wid),
+            SongOpMessage::Null => None,
+            SongOpMessage::SongClicked(wid) => Some(UpdateResult::SongClicked(wid)),
         }
     }
 
