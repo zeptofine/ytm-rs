@@ -1,9 +1,8 @@
-use std::{
-    collections::HashMap,
-    fs::File,
-    io::{BufRead, BufReader, Write},
-    path::PathBuf,
-};
+use std::collections::HashSet;
+use std::{collections::HashMap, fs::File, io::Write, path::PathBuf};
+
+use async_std::{fs as afs, io::prelude::BufReadExt};
+use async_std::{io as aio, stream::StreamExt};
 
 use serde::{Deserialize, Serialize};
 
@@ -16,18 +15,15 @@ pub type LineItemPair<T> = SourceItemPair<String, T>;
 fn filter_file_items<'a, T: IDed<String>>(
     items: impl Iterator<Item = LineItemPair<T>> + 'a,
     overwrite: bool,
-    filter: &'a mut HashMap<String, T>,
+    filter: &'a HashSet<String>,
 ) -> impl Iterator<Item = Vec<u8>> + 'a {
     items.filter_map(move |SourceItemPair(mut line, item)| {
         line.push('\n');
         let id = item.id();
-        match (overwrite, filter.contains_key(id)) {
+        match (overwrite, filter.contains(id)) {
             (true, true) => None,
             (true, false) => Some(line.as_bytes().to_vec()),
-            (false, true) => {
-                filter.remove(id);
-                Some(line.as_bytes().to_vec())
-            }
+            (false, true) => Some(line.as_bytes().to_vec()),
             (false, false) => Some(line.as_bytes().to_vec()),
         }
     })
@@ -46,58 +42,66 @@ impl LineBasedReader {
 impl<T: IDed<String> + Serialize + for<'de> Deserialize<'de>> CacheReader<String, String, T>
     for LineBasedReader
 {
-    fn read(&self) -> Result<impl Iterator<Item = LineItemPair<T>>, std::io::Error> {
-        File::open(&self.filepath).map(|file| {
-            BufReader::new(file)
-                .lines()
-                .map_while(Result::ok)
-                .filter_map(|l| {
-                    serde_json::from_str::<T>(&l)
-                        .ok()
-                        .map(|s| SourceItemPair(l, s))
-                })
-        })
+    async fn read(&self) -> Result<Vec<SourceItemPair<String, T>>, std::io::Error> {
+        let file = afs::File::open(&self.filepath).await?;
+        let reader = aio::BufReader::new(file);
+        let mut lines = reader.lines();
+        let mut vec: Vec<SourceItemPair<String, T>> = Vec::new();
+        while let Some(Ok(line)) = lines.next().await {
+            serde_json::from_str::<T>(&line).map(|s| vec.push(SourceItemPair(line, s)))?;
+        }
+        Ok(vec)
     }
-
-    fn extend(
+    async fn extend<OutT: AsRef<T>, V: AsRef<Vec<OutT>>>(
         &self,
-        items: impl IntoIterator<Item = T>,
+        items: V,
         overwrite: bool,
     ) -> Result<(), std::io::Error> {
-        let mut items: HashMap<String, T> =
-            items.into_iter().map(|i| (i.id().to_string(), i)).collect();
-
-        let filepath = &self.filepath;
-        let tempfile = filepath.with_extension("ndjson.tmp");
-
         {
-            // Create the temporary file to write the new list to
-            let output_file = File::create(&tempfile)?;
-            let mut out = std::io::BufWriter::new(output_file);
+            let items: HashMap<String, &T> = items
+                .as_ref()
+                .iter()
+                .map(|i| {
+                    let r = i.as_ref();
+                    (r.id().to_string(), r)
+                })
+                .collect();
+
+            let filepath = &self.filepath;
+            let tempfile = filepath.with_extension("ndjson.tmp");
+
             {
-                // Read the original list
-                if let Ok(itemlist) = self.read() {
-                    // Filter through the lines, find existing keys and skip broken lines
-                    for bytes in filter_file_items(itemlist, overwrite, &mut items) {
-                        out.write_all(&bytes)?;
+                // Create the temporary file to write the new list to
+                let output_file = File::create(&tempfile)?;
+                let mut out = std::io::BufWriter::new(output_file);
+                {
+                    // Read the original list
+                    if let Ok(itemlist) = self.read().await {
+                        let itemlist: Vec<SourceItemPair<String, T>> = itemlist;
+
+                        // Filter through the lines, find existing keys and skip broken lines
+                        let keys = items.keys().cloned().collect();
+                        for bytes in filter_file_items(itemlist.into_iter(), overwrite, &keys) {
+                            out.write_all(&bytes)?;
+                        }
+
+                        out.flush()?;
                     }
-
-                    out.flush()?;
                 }
+
+                // Add remaining keys to the file
+                for (_id, item) in items {
+                    let mut json = serde_json::to_string(item).unwrap();
+                    json.push('\n');
+                    out.write_all(json.as_bytes())?;
+                }
+                out.flush()?;
             }
 
-            // Add remaining keys to the file
-            for (_id, item) in items {
-                let mut json = serde_json::to_string(&item).unwrap();
-                json.push('\n');
-                out.write_all(json.as_bytes())?;
-            }
-            out.flush()?;
+            // Replace songs.ndjson with songs.ndjson.tmp
+            std::fs::rename(&tempfile, filepath)?;
+
+            Ok(())
         }
-
-        // Replace songs.ndjson with songs.ndjson.tmp
-        std::fs::rename(&tempfile, filepath)?;
-
-        Ok(())
     }
 }

@@ -59,7 +59,8 @@ impl Playlist {
             self.constructor
                 .view(scheme)
                 .map(PlaylistMessage::ConstructorMessage),
-        );
+        )
+        .style(scheme.scrollable_style.clone().update());
 
         column![row![name_edit, save_button], constructor].into()
     }

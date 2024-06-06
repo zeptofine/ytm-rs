@@ -114,6 +114,7 @@ FORMAT_POSTPROCESSORS: dict[str, tuple[str, dict[str, str]]] = {
     "aac": ("aac", {"key": "FFmpegVideoConvertor", "preferedformat": "aac"}),
     "flac": ("flac", {"key": "FFmpegVideoConvertor", "preferedformat": "flac"}),
     "mp3": ("mp3", {"key": "FFmpegVideoConvertor", "preferedformat": "mp3"}),
+    "wav": ("wav", {"key": "FFmpegVideoConvertor", "preferedformat": "wav"}),
 }
 
 

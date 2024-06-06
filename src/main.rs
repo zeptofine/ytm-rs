@@ -62,8 +62,8 @@ enum MAINMessage {
     Loaded(Result<YTMRSettings, LoadError>),
     Save,
     Saved(Result<PathBuf, SaveError>),
-    YtmrsMessage(YtmrsMsg),
     // UpdateVisibleBackground(SchemeState),
+    YtmrsMessage(YtmrsMsg),
 }
 
 impl Main {}
@@ -249,6 +249,25 @@ impl Application for Main {
     }
 }
 
+#[cfg(target_os = "macos")]
+const PLATFORM_SETTINGS: iced::window::settings::PlatformSpecific =
+    window::settings::PlatformSpecific {
+        title_hidden: true,
+        titlebar_transparent: true,
+        fullsize_content_view: true,
+    };
+#[cfg(target_os = "windows")]
+const PLATFORM_SETTINGS: iced::window::settings::PlatformSpecific =
+    window::settings::PlatformSpecific {
+        parent: None,
+        drag_and_drop: true,
+        skip_taskbar: false,
+    };
+#[cfg(target_os = "linux")]
+const PLATFORM_SETTINGS: window::settings::PlatformSpecific = window::settings::PlatformSpecific {
+    application_id: "YtmRs".to_string(),
+};
+
 pub fn main() -> iced::Result {
     let backend = Arc::new(Mutex::new(BackendHandler::default()));
 
@@ -267,22 +286,7 @@ pub fn main() -> iced::Result {
             transparent: true,
             level: window::Level::Normal,
             icon: None,
-            #[cfg(target_os = "macos")]
-            platform_specific: window::settings::PlatformSpecific {
-                title_hidden: true,
-                titlebar_transparent: true,
-                fullsize_content_view: true,
-            },
-            #[cfg(target_os = "windows")]
-            platform_specific: window::settings::PlatformSpecific {
-                parent: None,
-                drag_and_drop: true,
-                skip_taskbar: false,
-            },
-            #[cfg(target_os = "linux")]
-            platform_specific: window::settings::PlatformSpecific {
-                application_id: "YtmRs".to_string(),
-            },
+            platform_specific: PLATFORM_SETTINGS,
             exit_on_close_request: true,
         },
         ..Default::default()

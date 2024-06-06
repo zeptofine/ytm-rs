@@ -66,7 +66,7 @@ impl BackendHandler {
     pub fn load(port: Option<u16>) -> Self {
         let port = port.unwrap_or(DEFAULT_PORT);
 
-        let url = Url::parse(&format!("http://localhost:{port}/")).unwrap();
+        let url = Url::parse(&format!("http://127.0.0.1:{port}/")).unwrap();
 
         let blocking_client = reqwest::blocking::Client::new();
 
@@ -200,7 +200,7 @@ impl BackendHandler {
                     host.set_path("download");
                     let dct = DownloadSongDict {
                         url,
-                        convert_to: "aac".to_string(),
+                        convert_to: "wav".to_string(),
                     };
                     Some(Self::__post(host, dct))
                 }

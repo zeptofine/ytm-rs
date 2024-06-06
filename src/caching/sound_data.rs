@@ -12,10 +12,14 @@ impl SoundData {
 impl From<(String, Vec<u8>)> for SoundData {
     fn from(value: (String, Vec<u8>)) -> Self {
         // println!["{:?}", value];
-        SoundData(value.0, Sound::from_bytes(value.1).unwrap())
+        let sound = Sound::from_bytes(value.1);
+        println!["Created sound from bytes"];
+
+        SoundData(value.0, sound.unwrap())
     }
 }
 impl IDed<String> for SoundData {
+    #[inline]
     fn id(&self) -> &String {
         &self.0
     }

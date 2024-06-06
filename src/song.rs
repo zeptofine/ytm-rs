@@ -101,7 +101,14 @@ impl Song {
         }
     }
 }
+impl AsRef<Song> for Song {
+    #[inline]
+    fn as_ref(&self) -> &Song {
+        self
+    }
+}
 impl IDed<String> for Song {
+    #[inline]
     fn id(&self) -> &String {
         &self.id
     }

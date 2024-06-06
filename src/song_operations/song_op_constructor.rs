@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    sync::{Arc, RwLock},
+};
 
 use iced::{
     advanced::widget::Id as WId,
@@ -10,7 +13,7 @@ use iced_drop::{droppable, zones_on_point};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    caching::{BufferedCache, CacheInterface, NDJsonCache},
+    caching::{BufferedCache, NDJsonCache},
     settings::SongKey,
     song::{Song, SongData},
     styling::FullYtmrsScheme,
@@ -239,7 +242,7 @@ pub struct SongOpConstructor {
     pub operation: ActualRecursiveOps,
     pub list: Vec<ConstructorItem>,
     #[serde(skip)]
-    cache: CacheInterface<String, Song>,
+    cache: Option<Arc<RwLock<NDJsonCache<Song>>>>,
     pub collapsible: bool,
     collapsed: bool,
     // used for certain operations, like LoopNTimes and Stretch
@@ -251,7 +254,7 @@ impl Default for SongOpConstructor {
             id: Default::default(),
             operation: ActualRecursiveOps::PlayOnce,
             list: vec![],
-            cache: CacheInterface::default(),
+            cache: None,
             collapsible: true,
             collapsed: false,
             n: 1,
@@ -259,16 +262,24 @@ impl Default for SongOpConstructor {
     }
 }
 impl SongOpConstructor {
-    pub fn new(operation: ActualRecursiveOps, list: Vec<ConstructorItem>) -> Self {
+    pub fn new(
+        operation: ActualRecursiveOps,
+        list: Vec<ConstructorItem>,
+        cache: Option<Arc<RwLock<NDJsonCache<Song>>>>,
+    ) -> Self {
         Self {
             id: ItemId::default(),
             operation,
             list,
-            cache: CacheInterface::default(),
+            cache,
             collapsible: true,
             collapsed: false,
             n: 1,
         }
+    }
+
+    pub fn set_cache(&mut self, cache: Arc<RwLock<NDJsonCache<Song>>>) {
+        self.cache = Some(cache);
     }
 
     /// Returns all the song keys found in this constructor recursively
@@ -346,7 +357,14 @@ impl SongOpConstructor {
             })
             .cloned()
             .collect();
-        let map: HashMap<String, _> = self.cache.get(&songs).collect();
+
+        let map: HashMap<String, _> = match &self.cache {
+            Some(lock) => {
+                let c = lock.read().unwrap();
+                c.fetch_existing(&songs)
+            }
+            None => HashMap::new(),
+        };
 
         let items = self.list.iter().enumerate().map(|(idx, item)| match item {
             ConstructorItem::Song(key, sid) => {
@@ -521,23 +539,6 @@ impl SongOpConstructor {
         }
     }
 
-    pub fn update_cache(&mut self, sc: &mut NDJsonCache<Song>) {
-        let used_songs: HashSet<_> = self.all_song_keys_rec().cloned().collect();
-        self.cache.replace(sc.fetch(&used_songs));
-        for item in self.list.iter_mut() {
-            match item {
-                ConstructorItem::Operation(op) => {
-                    op.update_cache(sc);
-                }
-                ConstructorItem::Song(_, _) => (),
-            }
-        }
-    }
-
-    pub fn cache_size(&self) -> usize {
-        self.cache.len()
-    }
-
     pub fn build(&self) -> RecursiveSongOp {
         let children: Vec<RecursiveSongOp> = self
             .list
@@ -561,7 +562,7 @@ impl SongOpConstructor {
 }
 impl From<Vec<ConstructorItem>> for SongOpConstructor {
     fn from(value: Vec<ConstructorItem>) -> Self {
-        Self::new(ActualRecursiveOps::PlayOnce, value)
+        Self::new(ActualRecursiveOps::PlayOnce, value, None)
     }
 }
 impl TreeDirected for SongOpConstructor {

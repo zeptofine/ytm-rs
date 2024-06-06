@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use image::{self, GenericImageView};
 
-#[allow(unused)]
 pub async fn get_thumbnail(
     thumbnail_url: String,
     output: PathBuf,

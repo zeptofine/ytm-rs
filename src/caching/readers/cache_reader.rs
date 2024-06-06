@@ -1,5 +1,7 @@
 use std::{collections::HashSet, hash::Hash};
 
+use futures::Future;
+
 use crate::caching::IDed;
 
 #[derive(Debug, Clone)]
@@ -8,29 +10,31 @@ pub struct SourceItemPair<S, T>(
     pub T, // result
 );
 
-#[allow(unused)]
 pub trait CacheReader<SrcT, IDT, OutT>
 where
     IDT: Eq + PartialEq + Hash,
     OutT: IDed<IDT>,
 {
-    /// Creates an iterator from reading the ndjson file and creating items.
-    /// The iterator yields a struct of the original line and the created item
-    fn read(&self) -> Result<impl Iterator<Item = SourceItemPair<SrcT, OutT>>, std::io::Error>;
+    async fn read(&self) -> Result<Vec<SourceItemPair<SrcT, OutT>>, std::io::Error>;
 
-    fn read_filter(
+    async fn read_filter(
         &self,
         f: &HashSet<IDT>,
-    ) -> Result<impl Iterator<Item = SourceItemPair<SrcT, OutT>>, std::io::Error> {
+    ) -> Result<Vec<impl Future<Output = SourceItemPair<SrcT, OutT>>>, std::io::Error> {
         Ok(self
-            .read()?
-            .filter(move |SourceItemPair(_, o)| f.contains(o.id())))
+            .read()
+            .await?
+            .into_iter()
+            .filter_map(|i| match f.contains(i.1.id()) {
+                true => Some(async { i }),
+                false => None,
+            })
+            .collect())
     }
-
     /// Extends the cache with the given items.
-    fn extend(
+    async fn extend<T: AsRef<OutT>, V: AsRef<Vec<T>>>(
         &self,
-        items: impl IntoIterator<Item = OutT>,
+        items: V,
         overwrite: bool,
     ) -> Result<(), std::io::Error>;
 }

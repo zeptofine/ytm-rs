@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 use kittyaudio::{Mixer, Sound, SoundHandle};
 
+#[derive(Clone)]
 pub struct YTMRSAudioManager {
     mixer: Mixer,
     current_song: Option<SoundHandle>,
@@ -22,7 +23,6 @@ impl Default for YTMRSAudioManager {
     }
 }
 
-#[allow(unused)]
 impl YTMRSAudioManager {
     pub fn new(mixer: Mixer) -> Self {
         Self {

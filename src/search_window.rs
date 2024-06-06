@@ -10,10 +10,11 @@ use iced_drop::{droppable, zones_on_point};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    caching::{CacheInterface, RwMap},
+    caching::{BufferedCache, NDJsonCache, RwMap},
     song::{Song, SongData},
     styling::FullYtmrsScheme,
     user_input::SelectionMode,
+    ytmrs::RwArc,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,14 +117,14 @@ pub struct SearchWindow {
     pub query: String,
     pub search_type: SearchType,
     #[serde(skip)]
-    pub cache: CacheInterface<String, Song>,
+    pub cache: Option<RwArc<NDJsonCache<Song>>>,
 }
 impl Default for SearchWindow {
     fn default() -> Self {
         SearchWindow {
             query: String::new(),
             search_type: SearchType::Tab(vec![], SelectionMode::None),
-            cache: CacheInterface::default(),
+            cache: None,
         }
     }
 }
@@ -139,7 +140,13 @@ impl SearchWindow {
     pub fn view(&self, scheme: &FullYtmrsScheme) -> Element<SWMessage> {
         let keys: HashSet<String> = self.used_keys().into_iter().cloned().collect();
 
-        let cached_map: HashMap<_, _> = self.cache.get(&keys).collect();
+        let cached_map: HashMap<_, _> = match &self.cache {
+            Some(lock) => {
+                let c = lock.read().unwrap();
+                c.fetch_existing(&keys)
+            }
+            None => HashMap::new(),
+        };
 
         let search_query = text_input("Enter query...", &self.query)
             .on_input(SWMessage::SearchQueryChanged)

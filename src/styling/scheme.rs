@@ -23,7 +23,6 @@ use ::{
 #[cfg(feature = "thumbnails")]
 use crate::styling::{argb_to_color, pixel_to_argb};
 
-#[allow(unused)]
 pub trait Interpolable {
     /// Interpolates between two colors, with a transition rate.
     fn interpolate(&self, other: &Self, t: f32) -> Self;
@@ -46,7 +45,7 @@ impl Default for BasicYtmrsScheme {
         }
     }
 }
-#[allow(unused)]
+
 impl BasicYtmrsScheme {
     pub fn to_background(&self) -> Background {
         Background::Gradient(Gradient::Linear(Linear::new(Degrees(180.0)).add_stops([
@@ -163,7 +162,6 @@ pub struct Transitioning {
 #[derive(Debug, Clone, Default)]
 pub struct Finished(pub FullYtmrsScheme);
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub enum SchemeState {
     Started(Box<Started>),
@@ -186,7 +184,6 @@ impl SchemeState {
     }
 }
 
-#[allow(unused)]
 pub async fn transition_scheme(state: SchemeState) -> SchemeState {
     match state {
         SchemeState::Started(s) => {

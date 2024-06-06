@@ -1,5 +1,5 @@
 use super::YTMRSAudioManager;
-use crate::{song::format_duration, styling::FullYtmrsScheme};
+use crate::{settings::YTMRUserSettings, song::format_duration, styling::FullYtmrsScheme};
 use iced::{
     widget::{button, column, hover, progress_bar, row, slider, Text},
     Alignment, Command, Element, Length,
@@ -9,6 +9,7 @@ use iced::{
 use iced::widget::Svg;
 
 #[cfg(feature = "svg")]
+#[inline]
 fn pause_play_button(playing: bool) -> (Svg<'static>, TrackerMsg) {
     match playing {
         true => (Svg::new(crate::audio::PAUSE_SVG.clone()), TrackerMsg::Pause),
@@ -16,6 +17,7 @@ fn pause_play_button(playing: bool) -> (Svg<'static>, TrackerMsg) {
     }
 }
 #[cfg(not(feature = "svg"))]
+#[inline]
 fn pause_play_button<'a>(playing: bool) -> (Text<'a>, TrackerMsg) {
     use iced::alignment::Horizontal;
 
@@ -31,19 +33,23 @@ fn pause_play_button<'a>(playing: bool) -> (Text<'a>, TrackerMsg) {
     }
 }
 #[cfg(feature = "svg")]
+#[inline]
 fn next_button() -> Svg<'static> {
     Svg::new(crate::audio::SKIP_NEXT_SVG.clone())
 }
 #[cfg(not(feature = "svg"))]
+#[inline]
 fn next_button() -> Text<'static> {
     Text::new(">|").horizontal_alignment(iced::alignment::Horizontal::Center)
 }
 #[cfg(feature = "svg")]
+#[inline]
 fn previous_button() -> Svg<'static> {
     use iced::{Radians, Rotation};
     next_button().rotation(Rotation::Floating(Radians::PI)) // Rotate 180 deg
 }
 #[cfg(not(feature = "svg"))]
+#[inline]
 fn previous_button() -> Text<'static> {
     Text::new("|<").horizontal_alignment(iced::alignment::Horizontal::Center)
 }
@@ -60,7 +66,7 @@ pub enum TrackerMsg {
 }
 
 /// A struct that shows the progress of the manager's audio playback.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AudioProgressTracker {
     pub elapsed: Option<f32>,
     pub total: Option<f32>,
@@ -83,6 +89,13 @@ impl Default for AudioProgressTracker {
 }
 
 impl AudioProgressTracker {
+    pub fn new(settings: &YTMRUserSettings) -> Self {
+        Self {
+            volume: settings.volume * 1000_f32,
+            ..Default::default()
+        }
+    }
+
     pub fn update_from_manager(&mut self, manager: &YTMRSAudioManager) {
         self.elapsed = manager.elapsed();
         self.total = manager.total();

@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 async-std = "1.12.0"
 directories-next = "2.0.0"
-kittyaudio = { version = "0.1.9", features = ["symphonia"] }
 once_cell = "1.19.0"
 rand = { version = "0.8.5" }
 reqwest = { version = "0.12.1", features = ["json", "blocking", "stream"] }
@@ -26,6 +25,13 @@ symphonia = "0.5.4"
 itertools = "0.13.0"
 tokio-util = { version = "0.7.11", features = ["io"] }
 futures-util = "0.3.30"
+futures = "0.3.30"
+async-mutex = "1.4.0"
+
+[dependencies.kittyaudio]
+version = "0.1.9"
+# path = "../kittyaudio"
+features = ["symphonia"]
 
 [dependencies.material-colors]
 git = "https://github.com/Aiving/material-colors"
@@ -48,7 +54,16 @@ tempfile = "3.10.1"
 
 
 [features]
+default = ["svg", "thumbnails"]
 
 svg = ["iced/svg"]
 thumbnails = ["iced/image", "dep:image", "dep:material-colors"]
 optimizations = ["uuid/fast-rng", "tokio/parking_lot"]
+
+
+[profile.release]
+lto = "thin"
+
+[profile.release-fat]
+inherits = "release"
+lto = true

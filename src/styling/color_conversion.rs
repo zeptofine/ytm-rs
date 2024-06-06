@@ -2,7 +2,6 @@ use iced::Color;
 
 use material_colors::color::Argb;
 
-#[allow(unused)]
 pub fn argb_to_color(argb: Argb) -> Color {
     Color {
         r: argb.red as f32 / 255.0,
@@ -12,7 +11,6 @@ pub fn argb_to_color(argb: Argb) -> Color {
     }
 }
 
-#[allow(unused)]
 pub fn color_to_argb(color: Color) -> Argb {
     Argb {
         red: (color.r * 255.0) as u8,
@@ -22,7 +20,6 @@ pub fn color_to_argb(color: Color) -> Argb {
     }
 }
 
-#[allow(unused)]
 pub fn pixel_to_argb(pixel: image::Rgba<u8>) -> Argb {
     Argb {
         red: pixel.0[0],

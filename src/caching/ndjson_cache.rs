@@ -1,8 +1,9 @@
 use std::{
     collections::{hash_map::Keys, HashSet},
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
 };
 
+use futures::prelude::Future;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -13,7 +14,7 @@ use super::{
 #[derive(Debug, Clone)]
 pub struct NDJsonCache<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> {
     map: RwMap<String, T>,
-    pub reader: Arc<Mutex<LineBasedReader>>,
+    pub reader: LineBasedReader,
 }
 impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> NDJsonCache<T> {
     pub fn new(cache: LineBasedReader) -> Self {
@@ -23,17 +24,7 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> NDJsonCache<T> {
         }
 
         Self {
-            reader: Arc::new(Mutex::new(cache)),
-            map: Default::default(),
-        }
-    }
-}
-impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> From<Arc<Mutex<LineBasedReader>>>
-    for NDJsonCache<T>
-{
-    fn from(value: Arc<Mutex<LineBasedReader>>) -> Self {
-        Self {
-            reader: value,
+            reader: cache,
             map: Default::default(),
         }
     }
@@ -53,47 +44,45 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> BufferedCache<Stri
         self.map.keys()
     }
 
-    fn cache_size(&self) -> usize {
-        self.map.len()
-    }
-
     fn drop_from_cache(&mut self, keys: impl IntoIterator<Item = String>) {
         keys.into_iter().for_each(|key| {
             self.map.remove(&key);
         });
     }
 
-    fn cache_ids(
-        &mut self,
+    async fn read_from_ids_async(
+        &self,
         ids: &HashSet<String>,
-    ) -> impl Iterator<Item = (String, Arc<RwLock<T>>)> + '_ {
-        (!ids.is_empty())
-            .then(|| {
-                let items: Vec<_> = {
-                    let reader = self.reader.lock().unwrap();
-                    let items = reader
-                        .read()
-                        .map(|iter| {
-                            iter.filter_map(move |SourceItemPair(_, item): SourceItemPair<_, T>| {
+    ) -> Vec<impl Future<Output = (String, Arc<RwLock<T>>)>> {
+        let items = match ids.is_empty() {
+            true => vec![],
+            false => {
+                let futures = self.reader.read_filter(ids).await;
+                match futures {
+                    Ok(iter) => {
+                        let items = futures::future::join_all(iter).await;
+                        items
+                            .into_iter()
+                            .map(move |SourceItemPair(_, item): SourceItemPair<_, T>| async {
                                 let id = item.id().to_string();
-                                ids.contains(&id).then(|| (id, Arc::new(RwLock::new(item))))
+                                (id, Arc::new(RwLock::new(item)))
                             })
                             .collect()
-                        })
-                        .unwrap_or_default();
-                    items
-                };
-                self.map.extend(items.clone());
-                items.into_iter().map(|(str, _)| {
-                    let arc = self.new_rw(&str);
-                    (str.to_string(), arc)
-                })
-            })
-            .into_iter()
-            .flatten()
+                    }
+                    Err(e) => {
+                        println!["Error: {e:?}"];
+                        vec![]
+                    }
+                }
+            }
+        };
+        items
     }
 
-    fn new_rw(&self, id: &String) -> Arc<RwLock<T>> {
-        Arc::clone(&self.map[id])
+    fn push_cache<I>(&mut self, items: I)
+    where
+        I: IntoIterator<Item = (String, Arc<RwLock<T>>)>,
+    {
+        self.map.extend(items);
     }
 }

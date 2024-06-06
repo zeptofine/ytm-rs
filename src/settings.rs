@@ -35,7 +35,7 @@ impl Default for YTMRUserSettings {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct YTMRSettings {
     pub playlist: Playlist,
-    pub user_settings: YTMRUserSettings,
+    pub user: YTMRUserSettings,
 }
 
 #[derive(Debug, Clone)]

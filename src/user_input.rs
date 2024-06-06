@@ -99,7 +99,7 @@ impl SelectionMode {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct UserInputs {
     pub modifiers: keyboard::Modifiers,
 }
