@@ -3,7 +3,7 @@ use async_std::{
     io::{ReadExt, WriteExt},
 };
 use futures::{future, Future};
-use std::{collections::HashSet, fs as sfs, os::windows::fs::MetadataExt, path::PathBuf};
+use std::{collections::HashSet, fs as sfs, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -19,8 +19,7 @@ fn random_uuid() -> String {
 pub async fn read_file(filepath: PathBuf) -> Result<Vec<u8>, async_std::io::Error> {
     println!["Reading data of: {:?}", filepath];
     let mut file = afs::File::open(filepath).await?;
-    let mut data =
-        Vec::with_capacity(file.metadata().await.map(|m| m.file_size()).unwrap_or(0) as usize); // approximate the file size
+    let mut data = Vec::with_capacity(file.metadata().await.map(|m| m.len()).unwrap_or(0) as usize); // approximate the file size
     let _ = file.read_to_end(&mut data).await;
     println!["Finished reading, {:?} bytes", data.len()];
     Ok(data)
