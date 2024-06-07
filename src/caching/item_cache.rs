@@ -2,10 +2,10 @@ use std::{
     collections::{hash_map::Keys, HashMap, HashSet},
     fmt::Debug,
     hash::Hash,
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
-use futures::Future;
+use parking_lot::RwLock;
 
 pub trait IDed<T> {
     fn id(&self) -> &T;
@@ -34,11 +34,6 @@ pub trait BufferedCache<K: Hash + Clone + Eq + Debug, V: IDed<K>> {
             })
             .collect()
     }
-
-    async fn read_from_ids_async(
-        &self,
-        ids: &HashSet<K>,
-    ) -> Vec<impl Future<Output = (K, Arc<RwLock<V>>)>>;
 
     fn push_cache<I>(&mut self, items: I)
     where

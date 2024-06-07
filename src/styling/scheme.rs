@@ -2,6 +2,7 @@ use std::{thread, time::SystemTime};
 
 use iced::{
     gradient::{ColorStop, Linear},
+    widget::image::Handle,
     Background, Color, Degrees, Gradient,
 };
 
@@ -13,14 +14,12 @@ use crate::{
     BACKGROUND_TRANSITION_DURATION, BACKGROUND_TRANSITION_RATE,
 };
 
-#[cfg(feature = "thumbnails")]
 use ::{
     image::{imageops::FilterType, io::Reader, GenericImageView},
     material_colors::{color::Argb, quantize::QuantizerWsmeans, score::Score, theme::ThemeBuilder},
     std::path::PathBuf,
 };
 
-#[cfg(feature = "thumbnails")]
 use crate::styling::{argb_to_color, pixel_to_argb};
 
 pub trait Interpolable {
@@ -60,7 +59,13 @@ impl BasicYtmrsScheme {
         ])))
     }
 
-    #[cfg(feature = "thumbnails")]
+    pub async fn from_handle(handle: Handle) -> Self {
+        match handle {
+            Handle::Path(_, p) => Self::from_image(p).await,
+            _ => Self::default(),
+        }
+    }
+
     pub async fn from_image(path: PathBuf) -> Self {
         // I dont even know if wrapping this in a thread does anything but it
         // doesnt seem to block the UI so I'm happy
@@ -99,7 +104,6 @@ impl BasicYtmrsScheme {
         Self::from_argb(thread.join().unwrap()).await
     }
 
-    #[cfg(feature = "thumbnails")]
     pub async fn from_argb(argb: Argb) -> Self {
         let theme = ThemeBuilder::with_source(argb).build();
         let scheme = theme.schemes.dark;
@@ -112,6 +116,7 @@ impl BasicYtmrsScheme {
         }
     }
 
+    #[inline]
     pub fn into_full(self) -> FullYtmrsScheme {
         FullYtmrsScheme {
             pick_list_style: self.primary_color.into(),
@@ -122,6 +127,7 @@ impl BasicYtmrsScheme {
 }
 
 impl Interpolable for BasicYtmrsScheme {
+    #[inline]
     fn interpolate(&self, other: &Self, t: f32) -> Self {
         let t = ease_out_cubic(t).clamp(0.0, 1.0);
 
@@ -175,6 +181,7 @@ impl Default for SchemeState {
     }
 }
 impl SchemeState {
+    #[inline]
     pub fn first_choice(&self) -> &FullYtmrsScheme {
         match self {
             SchemeState::Started(s) => &s.from,

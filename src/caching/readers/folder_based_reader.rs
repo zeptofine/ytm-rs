@@ -3,6 +3,7 @@ use async_std::{
     io::{ReadExt, WriteExt},
 };
 use futures::{future, Future};
+
 use std::{collections::HashSet, fs as sfs, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -37,7 +38,7 @@ pub async fn write_file(filepath: PathBuf, data: &[u8]) -> Result<(), async_std:
     Ok(())
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct FileData<T>(String, T);
 // I cannot believe this can't be derived
 impl<T> AsRef<FileData<T>> for FileData<T> {
@@ -86,6 +87,39 @@ impl FolderBasedReader {
             index_reader: LineBasedReader::new(linepath),
         }
     }
+
+    pub async fn extend_to<T: AsRef<FileData<Vec<u8>>>, V: AsRef<Vec<(T, PathBuf)>>>(
+        &self,
+        items: V,
+        overwrite: bool,
+    ) -> Result<(), std::io::Error> {
+        let items: Vec<(&FileData<_>, PathBuf)> = items
+            .as_ref()
+            .iter()
+            .map(|(item, pth)| (item.as_ref(), self.filepath.join(pth)))
+            .collect();
+
+        // Write to files
+        for (data, filepath) in items.iter() {
+            match (filepath.exists(), overwrite) {
+                // Does not exist and overwrite is allowed
+                // Does exist but overwrite is allowed
+                // Does not exist and overwrite is not allowed
+                (false, true) | (true, true) | (false, false) => {
+                    write_file(filepath.clone(), &data.1).await?;
+                }
+                // Does exist and overwrite is not allowed
+                (true, false) => {}
+            }
+        }
+
+        // Extend the index
+        let new_items: Vec<_> = items
+            .iter()
+            .map(|(data, uuid)| -> FileData<PathBuf> { FileData(data.0.to_string(), uuid.into()) })
+            .collect();
+        self.index_reader.clone().extend(new_items, overwrite).await
+    }
 }
 impl CacheReader<String, String, FileData<Vec<u8>>> for FolderBasedReader {
     // Returns an iterator of pairs of the key and the File
@@ -111,7 +145,10 @@ impl CacheReader<String, String, FileData<Vec<u8>>> for FolderBasedReader {
         filter: &HashSet<String>,
     ) -> Result<Vec<impl Future<Output = SourceItemPair<String, FileData<Vec<u8>>>>>, std::io::Error>
     {
-        println!["Reading with filter: {:?}", filter];
+        println![
+            "Reading {:?} with filter: {:?}",
+            self.index_reader.filepath, filter
+        ];
 
         let index: Vec<SourceItemPair<_, FileData<PathBuf>>> =
             futures::future::join_all(self.index_reader.read_filter(filter).await?).await;
@@ -133,32 +170,90 @@ impl CacheReader<String, String, FileData<Vec<u8>>> for FolderBasedReader {
         items: V,
         overwrite: bool,
     ) -> Result<(), std::io::Error> {
-        let items: Vec<(&FileData<_>, String)> = items
+        let items: Vec<(&FileData<_>, PathBuf)> = items
             .as_ref()
             .iter()
-            .map(|f| (f.as_ref(), random_uuid()))
+            .map(|f| (f.as_ref(), PathBuf::from(random_uuid())))
             .collect();
 
-        // Write to files
-        for (data, uuid) in items.iter() {
-            let filepath = self.filepath.join(uuid);
-            match (filepath.exists(), overwrite) {
-                // Does not exist and overwrite is allowed
-                // Does exist but overwrite is allowed
-                // Does not exist and overwrite is not allowed
-                (false, true) | (true, true) | (false, false) => {
-                    write_file(filepath.clone(), &data.1).await?;
-                }
-                // Does exist and overwrite is not allowed
-                (true, false) => {}
-            }
+        self.extend_to(items, overwrite).await
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LazyFolderBasedReader {
+    pub filepath: PathBuf,
+    pub index_reader: LineBasedReader,
+}
+impl LazyFolderBasedReader {
+    pub fn new(filepath: PathBuf) -> Self {
+        let linepath = filepath.join("index").with_extension("ndjson");
+        if !filepath.exists() {
+            std::fs::create_dir_all(&filepath).unwrap();
         }
 
-        // Extend the index
-        let new_items: Vec<_> = items
-            .iter()
-            .map(|(data, uuid)| -> FileData<PathBuf> { FileData(data.0.to_string(), uuid.into()) })
-            .collect();
-        self.index_reader.clone().extend(new_items, overwrite).await
+        if !linepath.exists() {
+            // touch
+            println!["Creating index file at {:?}...", linepath];
+            println!["{:?}", sfs::File::create(&linepath)];
+        }
+        Self {
+            filepath,
+            index_reader: LineBasedReader::new(linepath),
+        }
+    }
+
+    pub fn generate_paths(
+        &self,
+        count: usize,
+    ) -> std::iter::Map<std::ops::Range<usize>, impl FnMut(usize) -> PathBuf> {
+        (0..count).map(|_| PathBuf::from(random_uuid()))
+    }
+
+    #[inline]
+    pub fn convert_path(&self, path: &PathBuf) -> PathBuf {
+        self.filepath.join(path)
+    }
+}
+
+impl CacheReader<String, String, FileData<PathBuf>> for LazyFolderBasedReader {
+    async fn read(&self) -> Result<Vec<SourceItemPair<String, FileData<PathBuf>>>, std::io::Error> {
+        let index: Vec<SourceItemPair<_, FileData<PathBuf>>> = self.index_reader.read().await?;
+
+        Ok(index
+            .into_iter()
+            .map(|SourceItemPair(source, FileData(uuid, path_id))| {
+                let actual = self.filepath.join(path_id);
+                SourceItemPair(source, FileData(uuid, actual))
+            })
+            .collect())
+    }
+
+    async fn read_filter(
+        &self,
+        f: &HashSet<String>,
+    ) -> Result<Vec<impl Future<Output = SourceItemPair<String, FileData<PathBuf>>>>, std::io::Error>
+    {
+        let index: Vec<SourceItemPair<_, FileData<PathBuf>>> = self.index_reader.read().await?;
+        Ok(index
+            .into_iter()
+            .filter_map(
+                |SourceItemPair(source, FileData(id, path_id))| match f.contains(&id) {
+                    true => {
+                        let actual = self.filepath.join(path_id);
+                        Some(async move { SourceItemPair(source, FileData(id, actual)) })
+                    }
+                    false => None,
+                },
+            )
+            .collect())
+    }
+
+    async fn extend<T: AsRef<FileData<PathBuf>>, V: AsRef<Vec<T>>>(
+        &self,
+        _items: V,
+        _overwrite: bool,
+    ) -> Result<(), std::io::Error> {
+        unreachable!() // But truthfully i am too lazy to implement this.
     }
 }

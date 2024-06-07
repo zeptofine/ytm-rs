@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
 use iced::{
@@ -10,6 +10,7 @@ use iced::{
     Command as Cm, Element, Length, Renderer, Theme,
 };
 use iced_drop::{droppable, zones_on_point};
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -186,7 +187,6 @@ pub enum CItemMessage {
 pub enum SongOpMessage {
     // User input
     NewGroup,
-    Generate,
     ChangeN(u32),
     Collapse,
     Uncollapse,
@@ -279,7 +279,12 @@ impl SongOpConstructor {
     }
 
     pub fn set_cache(&mut self, cache: Arc<RwLock<NDJsonCache<Song>>>) {
-        self.cache = Some(cache);
+        self.cache = Some(cache.clone());
+        for item in &mut self.list {
+            if let ConstructorItem::Operation(op) = item {
+                op.set_cache(cache.clone());
+            }
+        }
     }
 
     /// Returns all the song keys found in this constructor recursively
@@ -313,7 +318,6 @@ impl SongOpConstructor {
                 _ => None,
             })
             .push(Space::with_width(Length::Fill))
-            .push(button("Generate").on_press(SongOpMessage::Generate))
             .push(button("+").on_press(SongOpMessage::NewGroup))
             .into(),
 
@@ -360,7 +364,7 @@ impl SongOpConstructor {
 
         let map: HashMap<String, _> = match &self.cache {
             Some(lock) => {
-                let c = lock.read().unwrap();
+                let c = lock.read();
                 c.fetch_existing(&songs)
             }
             None => HashMap::new(),
@@ -371,7 +375,7 @@ impl SongOpConstructor {
                 let data = {
                     match map.get(key) {
                         Some(arc) => {
-                            let x = arc.read().unwrap();
+                            let x = arc.read();
                             x.as_data()
                         }
                         None => SongData::mystery_with_id(key.clone()),
@@ -483,8 +487,9 @@ impl SongOpConstructor {
                 }
             }
             SongOpMessage::NewGroup => {
-                self.list
-                    .push(ConstructorItem::Operation(SongOpConstructor::default()));
+                let mut constructor = SongOpConstructor::default();
+                constructor.cache = self.cache.clone();
+                self.list.push(ConstructorItem::Operation(constructor));
                 println!["Group added"];
                 println!["{:#?}", self.list];
                 None
@@ -524,12 +529,6 @@ impl SongOpConstructor {
             }
             SongOpMessage::ChangeN(n) => {
                 self.n = n;
-                None
-            }
-
-            SongOpMessage::Generate => {
-                let ops = self.build();
-                println!["{:#?}", ops];
                 None
             }
 

@@ -70,7 +70,7 @@ impl SearchType {
                         Container::new(
                             Element::new(match cached_map.get(key) {
                                 Some(songc) => {
-                                    let song = songc.read().unwrap();
+                                    let song = songc.read();
                                     song.as_data().row(true, false)
                                 }
                                 None => SongData::mystery_with_id(key.clone()).row(true, false),
@@ -142,7 +142,7 @@ impl SearchWindow {
 
         let cached_map: HashMap<_, _> = match &self.cache {
             Some(lock) => {
-                let c = lock.read().unwrap();
+                let c = lock.read();
                 c.fetch_existing(&keys)
             }
             None => HashMap::new(),

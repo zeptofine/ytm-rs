@@ -5,12 +5,9 @@ use serde::{Deserialize, Serialize};
 use iced::{
     advanced::image as iced_image,
     alignment::{Horizontal, Vertical},
-    widget::{self, button, column, container, hover, row, text, Row, Text},
+    widget::{self, button, column, container, hover, row, text, Image, Row, Text},
     Alignment, Background, Border, Color, Element, Length, Shadow, Vector,
 };
-
-#[cfg(feature = "thumbnails")]
-use iced::widget::Image;
 
 #[cfg(feature = "svg")]
 use iced::widget::Svg;
@@ -128,6 +125,7 @@ pub fn format_duration(d: &f32) -> String {
 pub enum SongMessage {
     ThumbnailClicked,
 }
+#[derive(Clone)]
 pub struct SongData {
     pub title: String,
     pub channel: String,
@@ -161,7 +159,6 @@ impl SongData {
         }
     }
 
-    #[cfg(feature = "thumbnails")]
     fn img(h: Option<iced_image::Handle>, x: u16, y: u16) -> Option<Image<iced_image::Handle>> {
         h.map(|h| {
             Image::new(h)
@@ -180,33 +177,15 @@ impl SongData {
     }
 
     /// Creates the thumbnail of the song data, replacing with "???" text upon missing data.
-    #[cfg(feature = "thumbnails")]
-    fn image_or_placeholder<'a, M>(
-        h: Option<iced_image::Handle>,
-        width: u16,
-        height: u16,
-    ) -> Element<'a, M> {
-        match Self::img(h, width, height) {
-            Some(img) => Element::new(img),
-            None => Element::new(Self::placeholder(width, height)),
-        }
-    }
-
-    #[cfg(not(feature = "thumbnails"))]
-    fn image_or_placeholder<'a, M>(
-        _h: Option<iced_image::Handle>,
-        width: u16,
-        height: u16,
-    ) -> Element<'a, M> {
-        Element::new(Self::placeholder(width, height))
-    }
-
     pub fn row<'a>(self, clickable: bool, hover_play_button: bool) -> Row<'a, SongMessage> {
-        let img = Self::image_or_placeholder(self.handle.clone(), 80, 80);
+        let img = match Self::img(self.handle.clone(), 80, 80) {
+            Some(img) => Element::new(img),
+            None => Element::new(Self::placeholder(80, 80)),
+        };
 
         let c = match clickable {
             false => img,
-            true => button(container(img))
+            true => button(img)
                 .width(80)
                 .height(80)
                 .on_press(SongMessage::ThumbnailClicked)

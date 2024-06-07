@@ -1,9 +1,9 @@
 #[cfg(feature = "svg")]
 mod button_svgs;
+mod manager;
 mod tracker;
-mod ytmrs_manager;
 
 #[cfg(feature = "svg")]
 pub use button_svgs::*;
+pub use manager::*;
 pub use tracker::*;
-pub use ytmrs_manager::*;

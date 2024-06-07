@@ -1,15 +1,9 @@
-use std::{
-    collections::{hash_map::Keys, HashSet},
-    sync::{Arc, RwLock},
-};
+use std::{collections::hash_map::Keys, sync::Arc};
 
-use futures::prelude::Future;
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
-use super::{
-    readers::{CacheReader, LineBasedReader, SourceItemPair},
-    BufferedCache, IDed, RwMap,
-};
+use super::{readers::LineBasedReader, BufferedCache, IDed, RwMap};
 
 #[derive(Debug, Clone)]
 pub struct NDJsonCache<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> {
@@ -48,35 +42,6 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> BufferedCache<Stri
         keys.into_iter().for_each(|key| {
             self.map.remove(&key);
         });
-    }
-
-    async fn read_from_ids_async(
-        &self,
-        ids: &HashSet<String>,
-    ) -> Vec<impl Future<Output = (String, Arc<RwLock<T>>)>> {
-        let items = match ids.is_empty() {
-            true => vec![],
-            false => {
-                let futures = self.reader.read_filter(ids).await;
-                match futures {
-                    Ok(iter) => {
-                        let items = futures::future::join_all(iter).await;
-                        items
-                            .into_iter()
-                            .map(move |SourceItemPair(_, item): SourceItemPair<_, T>| async {
-                                let id = item.id().to_string();
-                                (id, Arc::new(RwLock::new(item)))
-                            })
-                            .collect()
-                    }
-                    Err(e) => {
-                        println!["Error: {e:?}"];
-                        vec![]
-                    }
-                }
-            }
-        };
-        items
     }
 
     fn push_cache<I>(&mut self, items: I)

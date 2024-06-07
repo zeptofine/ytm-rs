@@ -1,22 +1,42 @@
 use std::path::PathBuf;
 
 use async_std::prelude::*;
+use directories_next::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 use crate::playlist::Playlist;
 
 pub type SongKey = String;
 
+pub fn project_dir() -> Option<ProjectDirs> {
+    directories_next::ProjectDirs::from("rs", "zeptofine", "ytm-rs")
+}
+
+pub fn current_dir() -> PathBuf {
+    std::env::current_dir().unwrap_or_default()
+}
+
 pub fn project_data_dir() -> PathBuf {
-    if let Some(project_dirs) = directories_next::ProjectDirs::from("rs", "zeptofine", "ytm-rs") {
-        project_dirs.data_dir().into()
-    } else {
-        std::env::current_dir().unwrap_or_default()
+    match project_dir() {
+        Some(project_dirs) => project_dirs.data_dir().into(),
+        None => current_dir(),
+    }
+}
+pub fn project_config_dir() -> PathBuf {
+    match project_dir() {
+        Some(project_dirs) => project_dirs.config_dir().into(),
+        None => current_dir(),
+    }
+}
+pub fn project_cache_dir() -> PathBuf {
+    match project_dir() {
+        Some(project_dirs) => project_dirs.cache_dir().into(),
+        None => current_dir(),
     }
 }
 
 pub fn settings_path() -> PathBuf {
-    let mut path = project_data_dir();
+    let mut path = project_config_dir();
     path.push("songlist.json");
     path
 }

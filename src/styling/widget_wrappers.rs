@@ -51,7 +51,7 @@ impl Default for ScrollableStyle {
                 },
             },
             horizontal_scrollbar: Scrollbar {
-                background: None,
+                background: Some(Background::Color(Color::BLACK)),
                 border: Border::rounded(2).with_width(1),
                 scroller: Scroller {
                     color: Color::WHITE,

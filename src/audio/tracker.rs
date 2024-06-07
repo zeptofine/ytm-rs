@@ -1,12 +1,14 @@
 use super::YTMRSAudioManager;
 use crate::{settings::YTMRUserSettings, song::format_duration, styling::FullYtmrsScheme};
 use iced::{
-    widget::{button, column, hover, progress_bar, row, slider, Text},
-    Alignment, Command, Element, Length,
+    alignment::Vertical,
+    widget::{button, column, container, hover, progress_bar, row, slider, Text},
+    Alignment, Border, Color, Command, Element, Length,
 };
 
 #[cfg(feature = "svg")]
 use iced::widget::Svg;
+use kira::sound::PlaybackState;
 
 #[cfg(feature = "svg")]
 #[inline]
@@ -60,18 +62,18 @@ pub enum TrackerMsg {
     Play,
     Next,
     Previous,
-    UpdateVolume(f32),
-    ProgressSliderChanged(f32),
-    ProgressSliderReleased(f32),
+    UpdateVolume(f64),
+    ProgressSliderChanged(f64),
+    ProgressSliderReleased(f64),
 }
 
 /// A struct that shows the progress of the manager's audio playback.
 #[derive(Debug, Clone)]
 pub struct AudioProgressTracker {
-    pub elapsed: Option<f32>,
-    pub total: Option<f32>,
+    pub elapsed: Option<f64>,
+    pub total: Option<f64>,
     pub paused: bool,
-    pub volume: f32,
+    pub volume: f64,
     pub next_available: bool,
     pub previous_available: bool,
 }
@@ -91,44 +93,56 @@ impl Default for AudioProgressTracker {
 impl AudioProgressTracker {
     pub fn new(settings: &YTMRUserSettings) -> Self {
         Self {
-            volume: settings.volume * 1000_f32,
+            volume: settings.volume as f64 * 1000_f64,
             ..Default::default()
         }
     }
 
     pub fn update_from_manager(&mut self, manager: &YTMRSAudioManager) {
         self.elapsed = manager.elapsed();
-        self.total = manager.total();
-        self.paused = manager.is_paused();
-        self.volume = manager.volume() * 1000_f32;
+        self.total = manager.total().map(|d| d.as_secs_f64());
+        self.paused = manager.playback_state() == PlaybackState::Paused;
     }
 
     pub fn view(&self, scheme: &FullYtmrsScheme) -> Element<TrackerMsg> {
-        let elapsed = self.elapsed.unwrap_or(0.0);
-        let range = 0.0..=self.total.unwrap_or(1.0);
+        let elapsed = self.elapsed.unwrap_or(0.0) as f32;
+        let range = 0.0..=self.total.unwrap_or(1.0) as f32;
 
         let duration_display = Text::new(format!(
             "{} / {}",
             format_duration(&elapsed),
             format_duration(range.end())
         ));
+        let progress_color = scheme.colors.primary_color;
         let progress_bar = hover(
-            progress_bar(range.clone(), elapsed).height(10),
-            slider(range, elapsed, TrackerMsg::ProgressSliderChanged)
-                .on_release(TrackerMsg::ProgressSliderReleased(elapsed))
-                .height(10),
+            container(
+                progress_bar(range.clone(), elapsed)
+                    .height(8)
+                    .style(move |_| progress_bar::Style {
+                        background: iced::Background::Color(Color::BLACK),
+                        bar: iced::Background::Color(progress_color),
+                        border: Border::rounded(0),
+                    }),
+            )
+            .align_y(Vertical::Center)
+            .height(10),
+            slider(range, elapsed, |x| {
+                TrackerMsg::ProgressSliderChanged(x as f64)
+            })
+            .on_release(TrackerMsg::ProgressSliderReleased(elapsed as f64))
+            .height(10),
         );
 
         let next_button = {
             let button_style = scheme.playback_button_style.clone();
-            button(next_button())
+            button(next_button().width(32).height(32))
                 .on_press(TrackerMsg::Next)
                 .style(move |_, s| button_style.clone().update(s))
         };
         let previous_button = {
             let button_style = scheme.playback_button_style.clone();
 
-            button(previous_button())
+            button(previous_button().width(32).height(32))
                 .on_press(TrackerMsg::Previous)
                 .style(move |_, s| button_style.clone().update(s))
         };

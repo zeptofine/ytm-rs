@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     fmt::Debug,
     path::PathBuf,
-    sync::{Arc, Mutex, RwLock},
+    sync::Arc,
     time,
 };
 
@@ -12,11 +12,13 @@ use iced::{
     widget::{
         column,
         container::{Container, Id as CId},
+        image::Handle,
         row, Space,
     },
     Alignment, Command as Cm, Element, Length, Subscription,
 };
-use kittyaudio::Sound;
+use kira::sound::static_sound::StaticSoundData;
+use parking_lot::{Mutex, RwLock};
 use reqwest::Url;
 
 use crate::{
@@ -25,19 +27,20 @@ use crate::{
     caching::{
         readers::{
             folder_based_reader::read_file, CacheReader, FileData, FolderBasedReader,
-            LineBasedReader,
+            LazyFolderBasedReader, LineBasedReader,
         },
-        BufferedCache, FolderCache, NDJsonCache, RwMap, SoundData,
+        BasicSoundData, BufferedCache, FolderCache, NDJsonCache, RwMap, SoundData,
     },
     playlist::PlaylistMessage,
     response_types::{YTResponseError, YTResponseType},
     search_window::{SWMessage, SearchType, SearchWindow},
-    settings::{project_data_dir, YTMRSettings},
+    settings::{project_cache_dir, project_data_dir, YTMRSettings},
     song::Song,
     song_operations::{
         ConstructorItem, OperationTracker, SongOpTracker, TreeDirected, UpdateResult,
     },
-    styling::FullYtmrsScheme,
+    styling::{BasicYtmrsScheme, FullYtmrsScheme},
+    thumbnails::get_images,
     user_input::UserInputs,
 };
 
@@ -85,8 +88,14 @@ fn song_metadata_path() -> PathBuf {
 }
 
 fn song_audio_path() -> PathBuf {
-    let mut path = project_data_dir();
+    let mut path = project_cache_dir();
     path.push("songs");
+    path
+}
+
+fn thumbnails_directory() -> PathBuf {
+    let mut path = project_cache_dir();
+    path.push("thumbs");
     path
 }
 
@@ -96,10 +105,11 @@ fn song_audio_path() -> PathBuf {
 //     path
 // }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct YtmrsCache {
     pub song_metadata: RwArc<NDJsonCache<Song>>,
-    pub sounds: FolderCache<SoundData>,
+    pub sounds: FolderCache<BasicSoundData>,
+    pub thumbnails: LazyFolderBasedReader,
 }
 
 impl Default for YtmrsCache {
@@ -109,6 +119,7 @@ impl Default for YtmrsCache {
                 song_metadata_path(),
             )))),
             sounds: FolderCache::new(FolderBasedReader::new(song_audio_path())),
+            thumbnails: LazyFolderBasedReader::new(thumbnails_directory()),
         }
     }
 }
@@ -143,7 +154,7 @@ pub enum YtmrsMsg {
     RequestParsed(Box<YTResponseType>),
     RequestParseFailure(YTResponseError),
 
-    // SetNewBackground(String, BasicYtmrsScheme),
+    SetNewBackground(String, BasicYtmrsScheme),
     SearchWindowMessage(SWMessage),
     PlaylistMsg(PlaylistMessage),
     AudioTrackerMessage(TrackerMsg),
@@ -151,11 +162,14 @@ pub enum YtmrsMsg {
     KeysChanged(keyboard::Key, keyboard::Modifiers),
 
     DownloadSong(String, bool),
+    ImagesFetched {
+        map: HashMap<String, Handle>,
+    },
     SongsFetched {
         map: RwMap<String, Song>,
     },
     SoundsFetched {
-        map: Arc<RwMap<String, SoundData>>,
+        map: HashMap<String, StaticSoundData>,
         play: Option<String>,
     },
     SongDownloaded {
@@ -164,10 +178,8 @@ pub enum YtmrsMsg {
     },
     SongDownloadFinished {
         id: String,
-        data: Vec<u8>,
-        play: bool,
+        data: Box<BasicSoundData>,
     },
-    PlaySound(Sound),
 
     Null,
 }
@@ -190,25 +202,39 @@ impl Ytmrs {
             .set_cache(Arc::clone(&self.cache.song_metadata));
         self.search.cache = Some(Arc::clone(&self.cache.song_metadata));
 
-        let mut backend = self.backend_handler.lock().unwrap();
+        let mut backend = self.backend_handler.lock();
 
         if let BackendLaunchStatus::Unknown = backend.status {
             *backend = BackendHandler::load(None);
         }
-        let cache = self.cache.song_metadata.write().unwrap();
-        let reader = cache.reader.clone();
+        let cache = self.cache.song_metadata.write();
+        let metadata_reader = cache.reader.clone();
         let keys = self.all_used_keys();
-        Cm::perform(
-            async move {
-                let cache = NDJsonCache::new(reader);
 
-                futures::future::join_all(cache.read_from_ids_async(&keys).await)
-                    .await
-                    .into_iter()
-                    .collect()
-            },
-            |map| YtmrsMsg::SongsFetched { map },
-        )
+        Cm::batch([
+            Cm::perform(
+                async move {
+                    futures::future::join_all(metadata_reader.read_from_ids(&keys).await)
+                        .await
+                        .into_iter()
+                        .collect()
+                },
+                |map| YtmrsMsg::SongsFetched { map },
+            ),
+            // Cm::perform(
+            //     async move {
+            //         let items =
+            //             futures::future::join_all(thumb_reader.read_filter(&keys2).await.unwrap())
+            //                 .await;
+            //         println!["ITEMS: {:?}", items];
+            //         items
+            //             .into_iter()
+            //             .map(|x| (x.0, Handle::from_path(x.1.into_data())))
+            //             .collect()
+            //     },
+            //     |map| YtmrsMsg::ImagesFetched { map },
+            // ),
+        ])
     }
 
     pub fn prepare_to_save(&mut self) {}
@@ -223,7 +249,7 @@ impl Ytmrs {
     }
 
     pub fn view(&self, scheme: FullYtmrsScheme) -> Element<YtmrsMsg> {
-        let backend = self.backend_handler.lock().unwrap();
+        let backend = self.backend_handler.lock();
         let backend_status = backend.status.as_string();
 
         let search = self.search.view(&scheme).map(YtmrsMsg::SearchWindowMessage);
@@ -252,6 +278,7 @@ impl Ytmrs {
             .align_items(Alignment::Center)
             .spacing(20),
         )
+        // .explain(Color::WHITE)
     }
 
     pub fn update(&mut self, message: YtmrsMsg) -> Cm<YtmrsMsg> {
@@ -262,15 +289,15 @@ impl Ytmrs {
 
                 Cm::none()
             }
-            // YtmrsMsg::SetNewBackground(_, _) => {
-            //     // // Save primary color to cache for future use
-            //     // let mut handle = self.settings.index.get(&key);
-            //     // if handle.get_color().is_none() {
-            //     //     handle.set_color(scheme.primary_color);
-            //     //     println!["Saved primary color: {:?}", scheme.primary_color];
-            //     // }
-            //     Cm::none()
-            // }
+            YtmrsMsg::SetNewBackground(_, _) => {
+                // // Save primary color to cache for future use
+                // let mut handle = self.settings.index.get(&key);
+                // if handle.get_color().is_none() {
+                //     handle.set_color(scheme.primary_color);
+                //     println!["Saved primary color: {:?}", scheme.primary_color];
+                // }
+                Cm::none()
+            }
             YtmrsMsg::RequestRecieved(response) => match response {
                 Ok(s) => Cm::perform(Ytmrs::parse_request(s), |result| match result {
                     Ok(r) => YtmrsMsg::RequestParsed(Box::new(r)),
@@ -315,16 +342,39 @@ impl Ytmrs {
                         .map(|s| (s.id.clone(), Arc::new(RwLock::new(s.clone()))))
                         .collect::<RwMap<_, _>>();
 
+                    let thumb_urls: HashMap<_, _> = songs
+                        .iter()
+                        .map(|s| (s.id.clone(), Url::parse(&s.thumbnail).unwrap()))
+                        .collect();
+
                     // Add the songs to the file cache
                     let new_cache = self.cache.song_metadata.clone();
-                    let reader = new_cache.write().unwrap();
-                    let reader = reader.clone();
-                    Cm::perform(
-                        async move {
-                            println!("extend {:?}", reader.reader.extend(songs, true).await);
-                        },
-                        move |_| YtmrsMsg::SongsFetched { map },
-                    )
+                    let song_reader = new_cache.write();
+                    let song_reader = song_reader.clone();
+                    let thumb_reader = self.cache.thumbnails.clone();
+                    let thumb_reader = thumb_reader.clone();
+
+                    Cm::batch([
+                        Cm::perform(
+                            async move {
+                                println!(
+                                    "extend songs {:?}",
+                                    song_reader.reader.extend(songs, true).await
+                                );
+                            },
+                            move |_| YtmrsMsg::SongsFetched { map },
+                        ),
+                        Cm::perform(
+                            async move {
+                                let thumbnails =
+                                    get_images(thumb_reader, thumb_urls.into_iter().collect())
+                                        .await;
+
+                                thumbnails.into_iter().collect()
+                            },
+                            move |map| YtmrsMsg::ImagesFetched { map },
+                        ),
+                    ])
                 }
                 YTResponseType::Search(_s) => {
                     println!["Request is a search"];
@@ -343,7 +393,6 @@ impl Ytmrs {
                             Ok(_) => Cm::perform(
                                 self.backend_handler
                                     .lock()
-                                    .unwrap()
                                     .request_info(self.search.query.clone())
                                     .unwrap(),
                                 YtmrsMsg::RequestRecieved,
@@ -357,7 +406,6 @@ impl Ytmrs {
                                 Cm::perform(
                                     self.backend_handler
                                         .lock()
-                                        .unwrap()
                                         .request_search(self.search.query.clone())
                                         .unwrap(),
                                     YtmrsMsg::RequestRecieved,
@@ -435,12 +483,10 @@ impl Ytmrs {
                 TrackerMsg::Previous => todo!(),
                 TrackerMsg::UpdateVolume(v) => {
                     println!["{:?}", v];
-                    println!["Current volume: {:?}", self.audio_manager.volume()];
-                    let float_vol = v / 1000_f32;
+                    let float_vol = v / 1000_f64;
                     self.audio_manager.set_volume(float_vol);
                     self.audio_tracker.volume = *v;
-                    self.settings.user.volume = float_vol;
-                    println!["Current volume: {:?}", self.audio_manager.volume()];
+                    self.settings.user.volume = float_vol as f32;
                     Cm::none()
                 }
                 TrackerMsg::ProgressSliderChanged(_) => self
@@ -448,32 +494,45 @@ impl Ytmrs {
                     .update(msg)
                     .map(YtmrsMsg::AudioTrackerMessage),
                 TrackerMsg::ProgressSliderReleased(v) => {
-                    self.audio_manager.seek(v);
+                    self.audio_manager.seek(*v);
                     self.audio_tracker
                         .update(msg)
                         .map(YtmrsMsg::AudioTrackerMessage)
                 }
             },
 
-            YtmrsMsg::SongsFetched { map } => {
-                let mut lock = self.cache.song_metadata.write().unwrap();
-                lock.push_cache(map);
+            YtmrsMsg::ImagesFetched { map } => {
+                self.push_image_handles(map);
                 Cm::none()
             }
-
+            YtmrsMsg::SongsFetched { map } => {
+                {
+                    let mut lock = self.cache.song_metadata.write();
+                    lock.push_cache(map);
+                }
+                Cm::none()
+            }
             YtmrsMsg::SoundsFetched { map, play } => {
                 println!["Sounds fetched."];
-                self.cache.sounds.push_cache(HashMap::clone(&map));
-                println!["Sounds pushed to cache."];
+                let map: HashMap<_, _> = map
+                    .into_iter()
+                    .map(|(k, v)| {
+                        (
+                            k.clone(),
+                            Arc::new(RwLock::new(BasicSoundData::from((k, v)))),
+                        )
+                    })
+                    .collect();
+
+                self.cache.sounds.push_cache(map.clone());
 
                 if let Some(k) = play {
                     if map.contains_key(&k) {
-                        println!["Getting sound."];
                         let sound = map[&k].clone();
-                        let sound = sound.read().unwrap();
-                        self.play(sound.sound().to_owned());
+                        let sound = sound.read();
+                        self.play(SoundData::from(sound.clone()));
 
-                        println!["474 Played."];
+                        return self.set_background(k);
                     }
                 }
 
@@ -481,13 +540,13 @@ impl Ytmrs {
             }
 
             YtmrsMsg::DownloadSong(s, play) => {
-                let metadata = self.cache.song_metadata.read().unwrap();
+                let metadata = self.cache.song_metadata.read();
                 let songs = metadata.fetch_existing(&HashSet::from([s.clone()]));
                 if songs.is_empty() {
                     return Cm::none();
                 }
-                let song = songs[&s].read().unwrap();
-                let backend = self.backend_handler.lock().unwrap();
+                let song = songs[&s].read();
+                let backend = self.backend_handler.lock();
                 let url = song.webpage_url.clone();
 
                 Cm::perform(
@@ -510,49 +569,56 @@ impl Ytmrs {
                     let recdown = recdown[0].clone();
                     let filepath = PathBuf::from(recdown.filepath);
                     let id = song.id.clone();
-                    Cm::perform(read_file(filepath), move |data| match data {
-                        Ok(data) => YtmrsMsg::SongDownloadFinished { id, data, play },
-                        Err(_) => YtmrsMsg::Null,
-                    })
+                    let id2 = id.clone();
+                    let reader = self.cache.sounds.reader.clone();
+                    Cm::perform(
+                        async move {
+                            let data = read_file(filepath).await;
+
+                            match data {
+                                Ok(data) => {
+                                    let file_data = FileData::new(id2.clone(), data);
+                                    {
+                                        println![
+                                            "{:?}",
+                                            reader.extend(vec![&file_data], true).await
+                                        ];
+                                        println!["531 Extended."];
+                                    }
+                                    if play {
+                                        println!["Creating sound from bytes..."];
+                                        let bsd =
+                                            BasicSoundData::from((id2, file_data.into_data()));
+                                        println!["Created sound from bytes."];
+                                        Some(Box::new(bsd))
+                                    } else {
+                                        None
+                                    }
+                                }
+                                Err(e) => {
+                                    println!["{:?}", e];
+                                    None
+                                }
+                            }
+                        },
+                        move |data| match data {
+                            Some(data) => YtmrsMsg::SongDownloadFinished { id, data },
+                            None => YtmrsMsg::Null,
+                        },
+                    )
                 } else {
                     Cm::none()
                 }
             }
-            YtmrsMsg::SongDownloadFinished { id, data, play } => {
-                let file_data = FileData::new(id.clone(), data);
-                let reader = self.cache.sounds.reader.clone();
+            YtmrsMsg::SongDownloadFinished { id, data } => {
+                self.play(SoundData::from(*data));
 
-                Cm::perform(
-                    async move {
-                        {
-                            {
-                                println!["{:?}", reader.extend(vec![&file_data], true).await];
-                                println!["531 Extended."];
-                            }
-                            println!["Creating sound from bytes..."];
-                            let sound = Sound::from_bytes(file_data.into_data());
-                            println!["Created sound from bytes."];
-                            sound.unwrap()
-                        }
-                    },
-                    move |sound: Sound| {
-                        if play {
-                            YtmrsMsg::PlaySound(sound)
-                        } else {
-                            YtmrsMsg::CacheTick
-                        }
-                    },
-                )
-            }
-            YtmrsMsg::PlaySound(data) => {
-                self.play(data);
-
-                Cm::none()
+                self.set_background(id)
             }
             YtmrsMsg::CacheTick => {
                 let used_meta_keys: HashSet<String> = self.all_used_keys();
                 {
-                    let mut metadata = self.cache.song_metadata.write().unwrap();
+                    let mut metadata = self.cache.song_metadata.write();
                     let available_keys: HashSet<String> = metadata.keys().cloned().collect();
 
                     let unused_keys = available_keys
@@ -565,14 +631,14 @@ impl Ytmrs {
                 Cm::none()
             }
             YtmrsMsg::BackendStatusTick => {
-                self.backend_handler.lock().unwrap().poll();
+                self.backend_handler.lock().poll();
                 Cm::none()
             }
 
             YtmrsMsg::BackendStatusPollSuccess => Cm::none(),
             YtmrsMsg::BackendStatusPollFailure(e) => {
                 println!["Polling failure: {:?}", e];
-                let mut backend = self.backend_handler.lock().unwrap();
+                let mut backend = self.backend_handler.lock();
                 backend.status = BackendLaunchStatus::Unknown;
                 todo!()
             }
@@ -646,6 +712,20 @@ impl Ytmrs {
             .push_to_path(to.clone().into(), item);
     }
 
+    fn push_image_handles(&mut self, map: HashMap<String, Handle>) {
+        let used_keys = self.all_used_keys();
+        let lock = self.cache.song_metadata.write();
+        let mut song_cache = lock.fetch_existing(&used_keys);
+        for (key, song) in song_cache.iter_mut() {
+            let mut lock = song.write();
+            if lock.thumbnail_handle.is_none() {
+                if let Some(handle) = map.get(key) {
+                    lock.thumbnail_handle = Some(handle.clone());
+                }
+            }
+        }
+    }
+
     /// Generate the song tracker when a song is clicked
     fn song_clicked(&mut self, wid: WId) -> Cm<YtmrsMsg> {
         let path = self.settings.playlist.constructor.path_to_id(&wid).unwrap();
@@ -654,6 +734,7 @@ impl Ytmrs {
         let song_op = self.settings.playlist.constructor.build();
         println!["Song op: {:?}", song_op];
         println!["Is valid: {:?}", song_op.is_valid()];
+        println!["Loop type: {:?}", song_op.loop_type()];
         if !song_op.is_valid() {
             return Cm::none();
         }
@@ -664,49 +745,118 @@ impl Ytmrs {
             .playlist
             .constructor
             .item_at_path(generated_path);
-        println!["Estimated item at path: {:?}", item];
         if let Some(ConstructorItem::Song(k, _)) = item {
+            println!["Estimated item at path: {:?}", item];
+
             let hashset = HashSet::from([k.clone()]);
 
-            let reader = self.cache.sounds.reader.clone();
             let key = k.clone();
 
-            Cm::perform(
-                async move {
-                    println!["675 Collecting song..."];
-                    let cache = FolderCache::new(reader);
-                    let futures = cache.read_from_ids_async(&hashset).await;
-                    // there should only be one future in the list
-                    let future = futures.into_iter().take(1).next();
-                    println!["680 Collected future."];
-                    match future {
-                        Some(item) => {
-                            let actual_item = item.await;
-                            println!["684 Awaited item."];
-                            let arc = Some(Arc::new(HashMap::from([actual_item])));
-                            println!["686 created arc."];
-                            arc
-                        }
-                        None => None,
-                    }
-                },
-                move |map| match map {
-                    Some(map) => YtmrsMsg::SoundsFetched {
-                        map,
-                        play: Some(key),
-                    },
-                    None => YtmrsMsg::DownloadSong(key, true),
-                },
-            )
+            let sounds = self.cache.sounds.fetch_existing(&hashset);
+            match sounds.is_empty() {
+                false => {
+                    // Song exists in the cache, just play it
+                    let item = sounds[&key].read();
+                    self.play(SoundData::from(item.clone()));
+
+                    self.set_background(key)
+                }
+                true => {
+                    // Song does not exist in the cache, add it to the cache and play it
+                    let reader = self.cache.sounds.reader.clone();
+
+                    let mut cms = Vec::with_capacity(2);
+
+                    cms.push(Cm::perform(
+                        async move {
+                            let futures = reader.read_from_ids(&hashset).await;
+                            // there should only be one future in the list
+                            let future = futures.into_iter().take(1).next();
+                            match future {
+                                Some(item) => {
+                                    let actual_item: (String, Arc<RwLock<BasicSoundData>>) = {
+                                        let item = item.await;
+                                        let l = item.1.read();
+                                        (
+                                            item.0.clone(),
+                                            Arc::new(RwLock::new(BasicSoundData::from((
+                                                item.0,
+                                                l.clone().into_data(),
+                                            )))),
+                                        )
+                                    };
+                                    let arc = Some(Arc::new(HashMap::from([actual_item])));
+                                    println!["Created song arc."];
+                                    arc
+                                }
+                                None => None,
+                            }
+                        },
+                        move |map| match map {
+                            Some(map) => YtmrsMsg::SoundsFetched {
+                                map: {
+                                    map.iter()
+                                        .map(|(k, v)| {
+                                            let data = {
+                                                let item = v.read();
+                                                item.data().clone()
+                                            };
+
+                                            (k.clone(), data)
+                                        })
+                                        .collect()
+                                },
+                                play: Some(key),
+                            },
+                            None => YtmrsMsg::DownloadSong(key, true),
+                        },
+                    ));
+
+                    Cm::batch(cms)
+                }
+            }
         } else {
             Cm::none()
         }
     }
 
-    fn play(&mut self, sd: Sound) {
+    fn set_background(&self, key: String) -> Cm<YtmrsMsg> {
+        let hashset = HashSet::from([key.clone()]);
+        let reader = self.cache.thumbnails.clone();
+        let key2 = key.clone();
+        Cm::perform(
+            async move {
+                let hashset = hashset;
+                let thumbnails: HashMap<_, _> =
+                    futures::future::join_all(reader.read_from_ids(&hashset).await)
+                        .await
+                        .into_iter()
+                        .collect();
+                println!["THUMBNAILS: {:?}", thumbnails];
+
+                match thumbnails.is_empty() {
+                    true => None,
+                    false => {
+                        let data = {
+                            let thumbnail = thumbnails[&key].read();
+                            thumbnail.clone().into_data().clone()
+                        };
+                        Some(BasicYtmrsScheme::from_handle(Handle::from_path(data)).await)
+                    }
+                }
+            },
+            |ms| match ms {
+                Some(scheme) => YtmrsMsg::SetNewBackground(key2, scheme),
+                None => YtmrsMsg::Null,
+            },
+        )
+    }
+
+    fn play(&mut self, sd: SoundData) {
         println!["Playing sound."];
         self.audio_manager.play_once(sd);
-        self.audio_manager.set_volume(self.settings.user.volume);
+        self.audio_manager
+            .set_volume(self.settings.user.volume as f64);
         self.audio_tracker.update_from_manager(&self.audio_manager);
         self.tickers.playing_status.0 = true;
         println!["Played sound."];

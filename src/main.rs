@@ -3,8 +3,8 @@
 
 use std::fmt::Debug;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 use iced::advanced::Application;
 use iced::{alignment::Horizontal, Command as Cm, Element, Length, Subscription};
@@ -13,6 +13,8 @@ use iced::{
     theme::{Palette, Theme},
     widget::{button, column, container, text},
 };
+use parking_lot::Mutex;
+use styling::transition_scheme;
 
 mod audio;
 mod backend_handler;
@@ -25,7 +27,6 @@ mod song;
 mod song_list;
 mod song_operations;
 mod styling;
-#[cfg(feature = "thumbnails")]
 mod thumbnails;
 mod user_input;
 mod ytmrs;
@@ -62,7 +63,7 @@ enum MAINMessage {
     Loaded(Result<YTMRSettings, LoadError>),
     Save,
     Saved(Result<PathBuf, SaveError>),
-    // UpdateVisibleBackground(SchemeState),
+    UpdateVisibleBackground(SchemeState),
     YtmrsMessage(YtmrsMsg),
 }
 
@@ -140,46 +141,46 @@ impl Application for Main {
                 _ => Cm::none(),
             },
             Some(ref mut state) => match message {
-                // MAINMessage::UpdateVisibleBackground(scheme_state) => {
-                //     match scheme_state {
-                //         SchemeState::Started(_) => todo!(), // how
-                //         SchemeState::Transitioning(_) => {
-                //             state.state = scheme_state.clone();
+                MAINMessage::UpdateVisibleBackground(scheme_state) => {
+                    match scheme_state {
+                        SchemeState::Started(_) => todo!(), // how
+                        SchemeState::Transitioning(_) => {
+                            state.state = scheme_state.clone();
 
-                //             Cm::perform(
-                //                 transition_scheme(scheme_state),
-                //                 |state: SchemeState| -> MAINMessage {
-                //                     MAINMessage::UpdateVisibleBackground(state)
-                //                 },
-                //             )
-                //         }
-                //         SchemeState::Finished(_) => {
-                //             state.state = *Box::new(scheme_state);
-                //             Cm::none()
-                //         }
-                //     }
-                // }
-                // MAINMessage::YtmrsMessage(YtmrsMsg::SetNewBackground(k, scheme)) => {
-                //     let schemestate = SchemeState::Started(Box::new(styling::Started {
-                //         from: state.state.first_choice().clone(),
-                //         to: scheme.clone(),
-                //         started: SystemTime::now(),
-                //     }));
-                //     state.state = schemestate.clone();
-                //     Cm::batch([
-                //         Cm::perform(
-                //             transition_scheme(schemestate),
-                //             MAINMessage::UpdateVisibleBackground,
-                //         ),
-                //         state
-                //             .ytmrs
-                //             .update(YtmrsMsg::SetNewBackground(k, scheme))
-                //             .map(MAINMessage::YtmrsMessage),
-                //     ])
-                //     // Cm::perform(, |state| {
-                //     //     YTMRSMessage::UpdateVisibleBackground(state)
-                //     // })
-                // }
+                            Cm::perform(
+                                transition_scheme(scheme_state),
+                                |state: SchemeState| -> MAINMessage {
+                                    MAINMessage::UpdateVisibleBackground(state)
+                                },
+                            )
+                        }
+                        SchemeState::Finished(_) => {
+                            state.state = *Box::new(scheme_state);
+                            Cm::none()
+                        }
+                    }
+                }
+                MAINMessage::YtmrsMessage(YtmrsMsg::SetNewBackground(k, scheme)) => {
+                    let schemestate = SchemeState::Started(Box::new(styling::Started {
+                        from: state.state.first_choice().clone(),
+                        to: scheme.clone(),
+                        started: SystemTime::now(),
+                    }));
+                    state.state = schemestate.clone();
+                    Cm::batch([
+                        Cm::perform(
+                            transition_scheme(schemestate),
+                            MAINMessage::UpdateVisibleBackground,
+                        ),
+                        state
+                            .ytmrs
+                            .update(YtmrsMsg::SetNewBackground(k, scheme))
+                            .map(MAINMessage::YtmrsMessage),
+                    ])
+                    // Cm::perform(, |state| {
+                    //     YTMRSMessage::UpdateVisibleBackground(state)
+                    // })
+                }
                 MAINMessage::YtmrsMessage(msg) => {
                     state.ytmrs.update(msg).map(MAINMessage::YtmrsMessage)
                 }
@@ -293,7 +294,7 @@ pub fn main() -> iced::Result {
 
     // If backend is owned by current process, try to kill it
     {
-        let mut b = backend.lock().unwrap();
+        let mut b = backend.lock();
         if let BackendLaunchStatus::Launched(ConnectionMode::Child(process, _)) = &mut b.status {
             println!["Kill result: {:?}", process.kill()];
             println!["Killed backend"];
