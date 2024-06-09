@@ -6,7 +6,9 @@ use std::{
 use iced::{
     advanced::widget::Id as WId,
     alignment::Vertical,
-    widget::{button, column, container, pick_list, row, text, text_input, Column, Row, Space},
+    widget::{
+        button, column, container, pick_list, row, text, text_input, Column, Container, Row, Space,
+    },
     Command as Cm, Element, Length, Renderer, Theme,
 };
 use iced_drop::{droppable, zones_on_point};
@@ -400,11 +402,18 @@ impl SongOpConstructor {
                 .id(sid.0.clone())
                 .into()
             }
-            ConstructorItem::Operation(constructor) => {
-                constructor.view_nested(scheme).map(move |msg| {
-                    SongOpMessage::ItemMessage(idx, CItemMessage::Operation(Box::new(msg)))
-                })
-            }
+            ConstructorItem::Operation(constructor) => Element::new(
+                droppable(constructor.view_nested(scheme))
+                    .drag_mode(false, true)
+                    .drag_hide(true)
+                    .on_drag(move |_, _| SongOpMessage::Collapse)
+                    .on_drop(move |pt, rec| {
+                        SongOpMessage::Dropped(constructor.id.0.clone().into(), pt, rec)
+                    }),
+            )
+            .map(move |msg| {
+                SongOpMessage::ItemMessage(idx, CItemMessage::Operation(Box::new(msg)))
+            }),
         });
 
         row![
@@ -414,7 +423,7 @@ impl SongOpConstructor {
         .width(Length::Fill)
     }
 
-    pub fn view(&self, scheme: &FullYtmrsScheme) -> Element<SongOpMessage> {
+    pub fn view(&self, scheme: &FullYtmrsScheme) -> Container<SongOpMessage> {
         container(
             column![self.header(scheme, false).width(Length::Fill)]
                 .push_maybe(match self.collapsed {
@@ -424,10 +433,9 @@ impl SongOpConstructor {
                 .width(Length::Fill),
         )
         .id(self.id.0.clone())
-        .into()
     }
 
-    pub fn view_nested(&self, scheme: &FullYtmrsScheme) -> Element<SongOpMessage> {
+    pub fn view_nested(&self, scheme: &FullYtmrsScheme) -> Container<SongOpMessage> {
         container(
             column![self.header(scheme, true).width(Length::Fill)]
                 .push_maybe(match self.collapsed {
@@ -437,7 +445,6 @@ impl SongOpConstructor {
                 .width(Length::Fill),
         )
         .id(self.id.0.clone())
-        .into()
     }
 
     pub fn insert(&mut self, idx: usize, item: ConstructorItem) {
@@ -589,9 +596,10 @@ impl TreeDirected for SongOpConstructor {
         let subitem = &mut self.list[next_idx];
         match subitem {
             ConstructorItem::Song(_, _) => Some(self.list.remove(next_idx)),
-            ConstructorItem::Operation(op) => {
+            ConstructorItem::Operation(_) => {
+                println!["PATH:{:?}", pth];
                 if pth.is_empty() {
-                    Some(op.list.remove(next_idx))
+                    Some(self.list.remove(next_idx))
                 } else {
                     subitem.pop_path(pth)
                 }

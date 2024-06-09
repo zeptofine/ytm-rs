@@ -56,9 +56,7 @@ impl Playlist {
         let save_button = button(text("save")).on_press(PlaylistMessage::Save);
 
         let constructor = scrollable(
-            self.constructor
-                .view(scheme)
-                .map(PlaylistMessage::ConstructorMessage),
+            Element::new(self.constructor.view(scheme)).map(PlaylistMessage::ConstructorMessage),
         )
         .style(scheme.scrollable_style.clone().update());
 

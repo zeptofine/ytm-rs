@@ -556,12 +556,13 @@ impl Ytmrs {
                                         return Cm::none();
                                     }
                                     let from_path = from_path.unwrap();
+                                    println!["FROM:{:?}", from_path];
 
                                     let item = self
                                         .settings
                                         .playlist
                                         .constructor
-                                        .pop_path(from_path.clone().into());
+                                        .pop_path(from_path.into());
 
                                     if item.is_none() {
                                         return Cm::none();
@@ -576,13 +577,13 @@ impl Ytmrs {
                                     }
 
                                     let to_path = to_path.unwrap();
+                                    println!["TO:{:?}", to_path];
 
                                     self.settings
                                         .playlist
                                         .constructor
-                                        .push_to_path(to_path.clone().into(), item);
+                                        .push_to_path(to_path.into(), item);
 
-                                    println!["FROM:{:?}\nTO:{:?}", from_path, to_path];
                                     Cm::none()
                                 }
                             },
