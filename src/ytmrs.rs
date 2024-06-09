@@ -548,18 +548,41 @@ impl Ytmrs {
                                 UpdateResult::SongClicked(wid) => self.song_clicked(wid),
                                 UpdateResult::Move(from, to) => {
                                     // Remove item at `from` and place it to `to`
+                                    println!["MOVE FROM {:?} TO {:?}", from, to];
                                     let from_path =
                                         self.settings.playlist.constructor.path_to_id(&from);
-                                    let to_path =
-                                        self.settings.playlist.constructor.path_to_id(&to);
-                                    if from_path.is_none() || to_path.is_none() {
+
+                                    if from_path.is_none() {
                                         return Cm::none();
                                     }
                                     let from_path = from_path.unwrap();
+
+                                    let item = self
+                                        .settings
+                                        .playlist
+                                        .constructor
+                                        .pop_path(from_path.clone().into());
+
+                                    if item.is_none() {
+                                        return Cm::none();
+                                    }
+                                    let item = item.unwrap();
+
+                                    let to_path =
+                                        self.settings.playlist.constructor.path_to_id(&to);
+
+                                    if to_path.is_none() {
+                                        return Cm::none();
+                                    }
+
                                     let to_path = to_path.unwrap();
 
-                                    self.so_move(from_path, to_path);
+                                    self.settings
+                                        .playlist
+                                        .constructor
+                                        .push_to_path(to_path.clone().into(), item);
 
+                                    println!["FROM:{:?}\nTO:{:?}", from_path, to_path];
                                     Cm::none()
                                 }
                             },
@@ -884,25 +907,6 @@ impl Ytmrs {
                 top.push_to_path(VecDeque::new(), key.into());
             }
         }
-    }
-
-    /// Moves an item in the constructor from one position to another
-    fn so_move(&mut self, from: Vec<usize>, to: Vec<usize>) {
-        let item = self
-            .settings
-            .playlist
-            .constructor
-            .pop_path(from.clone().into());
-        if item.is_none() {
-            return;
-        }
-
-        let item = item.unwrap();
-
-        self.settings
-            .playlist
-            .constructor
-            .push_to_path(to.clone().into(), item);
     }
 
     fn push_image_handles(&mut self, map: HashMap<String, Handle>) {
