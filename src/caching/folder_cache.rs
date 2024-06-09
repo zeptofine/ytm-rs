@@ -1,6 +1,4 @@
-use std::{collections::HashMap, fmt::Debug, sync::Arc};
-
-use parking_lot::RwLock;
+use std::fmt::Debug;
 
 use super::{readers::FolderBasedReader, BufferedCache, IDed, RwMap};
 
@@ -21,10 +19,10 @@ impl<T: IDed<String> + Debug> FolderCache<T> {
 impl<T: Debug + IDed<String> + From<(String, Vec<u8>)>> BufferedCache<String, T>
     for FolderCache<T>
 {
-    fn items(&self) -> &HashMap<String, Arc<RwLock<T>>> {
+    fn items(&self) -> &RwMap<String, T> {
         &self.map
     }
-    fn items_mut(&mut self) -> &mut HashMap<String, Arc<RwLock<T>>> {
+    fn items_mut(&mut self) -> &mut RwMap<String, T> {
         &mut self.map
     }
 

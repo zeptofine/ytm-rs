@@ -380,7 +380,7 @@ impl SongOpConstructor {
                             let x = arc.read();
                             x.as_data()
                         }
-                        None => SongData::mystery_with_id(key.clone()),
+                        None => SongData::mystery_with_title(key.clone()),
                     }
                 };
                 let wid = WId::from(sid.0.clone());

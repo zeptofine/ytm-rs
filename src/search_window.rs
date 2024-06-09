@@ -10,12 +10,11 @@ use iced_drop::{droppable, zones_on_point};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    caching::{BufferedCache, NDJsonCache, RwMap},
+    caching::{BufferedCache, NDJsonCache, RwArc, RwMap},
     response_types::{YTIEKey, YTSearchEntry},
     song::{Song, SongData},
     styling::FullYtmrsScheme,
     user_input::SelectionMode,
-    ytmrs::RwArc,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,7 +123,7 @@ impl SearchType {
                                     let song = songc.read();
                                     song.as_data().row(true, false)
                                 }
-                                None => SongData::mystery_with_id(key.clone()).row(true, false),
+                                None => SongData::mystery_with_title(key.clone()).row(true, false),
                             })
                             .map(move |_| SWMessage::SelectSong(idx)),
                         )
@@ -155,14 +154,10 @@ impl SearchType {
                                 let song = song.read();
                                 song.as_data().row(false, false)
                             }
-                            None => SongData {
-                                title: title.clone().unwrap_or(id.clone()),
-                                channel: "???".to_string(),
-                                artists: None,
-                                duration: 0.,
-                                handle: None,
+                            None => {
+                                SongData::mystery_with_title(title.clone().unwrap_or(id.clone()))
+                                    .row(false, false)
                             }
-                            .row(false, false),
                         })
                         .map(move |_| SWMessage::SelectSong(idx)),
                     )

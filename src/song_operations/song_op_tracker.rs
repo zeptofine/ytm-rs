@@ -6,13 +6,18 @@ use super::RecursiveSongOp;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BackResult {
+    /// You cannot move back anymore.
     Rewound,
+    /// You are still in the current tracker
     Current,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NextResult {
+    /// You are still in the current tracker
     Current,
+
+    /// You are in the next tracker
     Ended,
 }
 

@@ -1,5 +1,6 @@
 use std::{fmt::Debug, time::Duration};
 
+use iced::Subscription;
 use kira::{
     manager::{AudioManager, AudioManagerSettings, DefaultBackend},
     sound::PlaybackState,
@@ -32,13 +33,29 @@ impl Default for YTMRSAudioManager {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ChangeSong {}
+
 impl YTMRSAudioManager {
-    // pub fn new(manager: AudioManager) -> Self {
-    //     Self {
-    //         manager,
-    //         current_song: None,
-    //     }
-    // }
+    pub fn subscription(&self) -> Subscription<ChangeSong> {
+        match self.playback_state() {
+            PlaybackState::Playing => {
+                // get the time that will take when the song will be finished
+                let remaining = self
+                    .total()
+                    .unwrap()
+                    .checked_sub(Duration::from_secs_f64(self.elapsed().unwrap()));
+                match remaining {
+                    Some(remaining) => iced::time::every(remaining).map(|_| ChangeSong {}),
+                    None => Subscription::none(),
+                }
+            }
+            PlaybackState::Pausing
+            | PlaybackState::Paused
+            | PlaybackState::Stopping
+            | PlaybackState::Stopped => Subscription::none(),
+        }
+    }
 
     pub fn playback_state(&self) -> PlaybackState {
         match &self.current_song {
@@ -83,6 +100,15 @@ impl YTMRSAudioManager {
             match &mut s.handle {
                 SoundDataHandleType::Static(d) => d.seek_to(secs),
                 SoundDataHandleType::Stream(d) => d.seek_to(secs),
+            }
+        }
+    }
+
+    pub fn seek_to_start(&mut self) {
+        if let Some(s) = &mut self.current_song {
+            match &mut s.handle {
+                SoundDataHandleType::Static(d) => d.seek_to(0.),
+                SoundDataHandleType::Stream(d) => d.seek_to(0.),
             }
         }
     }

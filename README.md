@@ -39,3 +39,4 @@ cargo run
 - [x] Thumbnails for songs, albums and playlists.
 - [ ] Saving playlists/albums as a SongOperation
 - [x] Actually playing music.
+- [ ] Dropping unused sounds from the cache

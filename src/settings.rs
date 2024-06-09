@@ -41,6 +41,30 @@ pub fn settings_path() -> PathBuf {
     path
 }
 
+pub fn song_metadata_path() -> PathBuf {
+    let mut path = project_data_dir();
+    path.push("songs.ndjson");
+    path
+}
+
+pub fn song_audio_path() -> PathBuf {
+    let mut path = project_cache_dir();
+    path.push("songs");
+    path
+}
+
+pub fn thumbnails_directory() -> PathBuf {
+    let mut path = project_cache_dir();
+    path.push("thumbs");
+    path
+}
+
+// fn playlists_directory() -> PathBuf {
+//     let mut path = project_data_dir();
+//     path.push("playlists");
+//     path
+// }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YTMRUserSettings {
     pub volume: f32,

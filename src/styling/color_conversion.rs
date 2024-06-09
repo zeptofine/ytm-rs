@@ -11,15 +11,6 @@ pub fn argb_to_color(argb: Argb) -> Color {
     }
 }
 
-// pub fn color_to_argb(color: Color) -> Argb {
-//     Argb {
-//         red: (color.r * 255.0) as u8,
-//         green: (color.g * 255.0) as u8,
-//         blue: (color.b * 255.0) as u8,
-//         alpha: (color.a * 255.0) as u8,
-//     }
-// }
-
 pub fn pixel_to_argb(pixel: image::Rgba<u8>) -> Argb {
     Argb {
         red: pixel.0[0],

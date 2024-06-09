@@ -11,7 +11,21 @@ pub trait IDed<T> {
     fn id(&self) -> &T;
 }
 
-pub type RwMap<K, V> = HashMap<K, Arc<RwLock<V>>>;
+pub type RwArc<T> = Arc<RwLock<T>>;
+pub type RwMap<K, V> = HashMap<K, RwArc<V>>;
+
+pub trait ToRwMapExt<K, V>: IntoIterator<Item = (K, V)> + Sized
+where
+    K: Hash + Clone + Eq + Debug,
+{
+    fn to_rwmap(self) -> RwMap<K, V> {
+        self.into_iter()
+            .map(|(k, v)| (k.clone(), Arc::new(RwLock::new(v))))
+            .collect()
+    }
+}
+
+impl<K: Hash + Clone + Eq + Debug, V, T: IntoIterator<Item = (K, V)>> ToRwMapExt<K, V> for T {}
 
 pub trait BufferedCache<K: Hash + Clone + Eq + Debug, V: IDed<K>> {
     fn items(&self) -> &HashMap<K, Arc<RwLock<V>>>;

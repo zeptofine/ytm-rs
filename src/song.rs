@@ -53,6 +53,8 @@ pub struct Song {
     pub requested_downloads: Option<Vec<RequestedDownload>>,
     #[serde(skip)]
     pub thumbnail_handle: Option<iced_image::Handle>,
+    #[serde(skip)]
+    pub ui_state: SongState,
 }
 
 impl Song {
@@ -82,9 +84,8 @@ impl Song {
                 .take(thread_rng().gen_range(0..=5))
                 .collect(),
             requested_downloads: None,
-            // thumbnail_cache_id: None,
             thumbnail_handle: None,
-            // song_cache_id: None,
+            ui_state: SongState::default(),
         }
     }
 
@@ -95,6 +96,7 @@ impl Song {
             artists: self.artists.clone(),
             duration: self.duration,
             handle: self.thumbnail_handle.clone(),
+            state: self.ui_state.clone(),
         }
     }
 }
@@ -132,6 +134,7 @@ pub struct SongData {
     pub artists: Option<Vec<String>>,
     pub duration: f64,
     pub handle: Option<iced_image::Handle>,
+    pub state: SongState,
 }
 impl SongData {
     /// Used for placeholders of songs that are not cached yet
@@ -142,12 +145,13 @@ impl SongData {
             artists: None,
             duration: -1.0,
             handle: None,
+            state: SongState::default(),
         }
     }
 
-    pub fn mystery_with_id(id: String) -> Self {
+    pub fn mystery_with_title(title: String) -> Self {
         Self {
-            title: id,
+            title,
             ..Self::mystery()
         }
     }
@@ -260,4 +264,17 @@ impl SongData {
         ];
         row.spacing(8).padding(0).align_items(Alignment::Center)
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub enum SongState {
+    #[default]
+    None,
+
+    Fetching,
+    Downloading,
+    Downloaded,
+
+    Cached,
+    Playing,
 }
