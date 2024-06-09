@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::Keys, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fmt::Debug,
     hash::Hash,
     sync::Arc,
@@ -14,17 +14,14 @@ pub trait IDed<T> {
 pub type RwMap<K, V> = HashMap<K, Arc<RwLock<V>>>;
 
 pub trait BufferedCache<K: Hash + Clone + Eq + Debug, V: IDed<K>> {
-    fn items<'a>(&'a self) -> impl Iterator<Item = (&'a K, &'a Arc<RwLock<V>>)>
-    where
-        K: 'a,
-        V: 'a;
-
-    fn keys(&self) -> Keys<'_, K, Arc<RwLock<V>>>;
+    fn items(&self) -> &HashMap<K, Arc<RwLock<V>>>;
+    fn items_mut(&mut self) -> &mut HashMap<K, Arc<RwLock<V>>>;
 
     fn drop_from_cache(&mut self, keys: impl IntoIterator<Item = K>);
 
     fn fetch_existing(&self, ids: &HashSet<K>) -> RwMap<K, V> {
         self.items()
+            .iter()
             .filter_map(|(key, s)| {
                 if ids.contains(key) {
                     Some((key.clone(), Arc::clone(s)))
@@ -34,8 +31,4 @@ pub trait BufferedCache<K: Hash + Clone + Eq + Debug, V: IDed<K>> {
             })
             .collect()
     }
-
-    fn push_cache<I>(&mut self, items: I)
-    where
-        I: IntoIterator<Item = (K, Arc<RwLock<V>>)>;
 }

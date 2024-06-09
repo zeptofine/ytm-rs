@@ -2,9 +2,9 @@ use async_std::{
     fs::{self as afs},
     io::{ReadExt, WriteExt},
 };
-use futures::{future, Future};
+use futures::{future::join_all, Future};
 
-use std::{collections::HashSet, fs as sfs, path::PathBuf};
+use std::{borrow::Borrow, collections::HashSet, fs as sfs, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -17,7 +17,8 @@ fn random_uuid() -> String {
     Uuid::new_v4().to_string()
 }
 
-pub async fn read_file(filepath: PathBuf) -> Result<Vec<u8>, async_std::io::Error> {
+pub async fn read_file<T: Borrow<PathBuf>>(filepath: T) -> Result<Vec<u8>, async_std::io::Error> {
+    let filepath = filepath.borrow();
     println!["Reading data of: {:?}", filepath];
     let mut file = afs::File::open(filepath).await?;
     let mut data = Vec::with_capacity(file.metadata().await.map(|m| m.len()).unwrap_or(0) as usize); // approximate the file size
@@ -136,30 +137,39 @@ impl CacheReader<String, String, FileData<Vec<u8>>> for FolderBasedReader {
             items.push(async { SourceItemPair(source, FileData(uuid, data_future.await.unwrap())) })
         }
 
-        Ok(future::join_all(items).await)
+        Ok(join_all(items).await)
     }
 
     // Finds the files, but only actually reads files that have the right id
     async fn read_filter(
         &self,
-        filter: &HashSet<String>,
-    ) -> Result<Vec<impl Future<Output = SourceItemPair<String, FileData<Vec<u8>>>>>, std::io::Error>
-    {
+        f: &HashSet<String>,
+    ) -> Result<
+        Vec<(
+            String,
+            impl Future<Output = SourceItemPair<String, FileData<Vec<u8>>>>,
+        )>,
+        std::io::Error,
+    > {
         println![
             "Reading {:?} with filter: {:?}",
-            self.index_reader.filepath, filter
+            self.index_reader.filepath, f
         ];
 
-        let index: Vec<SourceItemPair<_, FileData<PathBuf>>> =
-            futures::future::join_all(self.index_reader.read_filter(filter).await?).await;
+        let items = self.index_reader.read_filter(f).await?;
+        let ids: Vec<String> = items.iter().map(|i| i.0.clone()).collect();
+        let futures = join_all(items.into_iter().map(|i| i.1)).await;
+
+        let index: Vec<(String, SourceItemPair<_, FileData<PathBuf>>)> =
+            ids.into_iter().zip(futures).collect();
         let mut items = vec![];
 
-        for SourceItemPair(source, FileData(uuid, path_id)) in index {
+        for (id, SourceItemPair(source, FileData(uuid, path_id))) in index {
             println!["Source: {:?}", source];
             let actual = self.filepath.join(path_id);
-            items.push(async move {
+            items.push((id, async move {
                 SourceItemPair(source, FileData(uuid, read_file(actual).await.unwrap()))
-            })
+            }))
         }
 
         Ok(items)
@@ -232,8 +242,13 @@ impl CacheReader<String, String, FileData<PathBuf>> for LazyFolderBasedReader {
     async fn read_filter(
         &self,
         f: &HashSet<String>,
-    ) -> Result<Vec<impl Future<Output = SourceItemPair<String, FileData<PathBuf>>>>, std::io::Error>
-    {
+    ) -> Result<
+        Vec<(
+            String,
+            impl Future<Output = SourceItemPair<String, FileData<PathBuf>>>,
+        )>,
+        std::io::Error,
+    > {
         let index: Vec<SourceItemPair<_, FileData<PathBuf>>> = self.index_reader.read().await?;
         Ok(index
             .into_iter()
@@ -241,7 +256,9 @@ impl CacheReader<String, String, FileData<PathBuf>> for LazyFolderBasedReader {
                 |SourceItemPair(source, FileData(id, path_id))| match f.contains(&id) {
                     true => {
                         let actual = self.filepath.join(path_id);
-                        Some(async move { SourceItemPair(source, FileData(id, actual)) })
+                        Some((id.clone(), async move {
+                            SourceItemPair(source, FileData(id, actual))
+                        }))
                     }
                     false => None,
                 },

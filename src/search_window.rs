@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use iced::{
     alignment::Horizontal,
     keyboard::Modifiers,
-    widget::{column, scrollable, text_input, Column, Container},
+    widget::{column, scrollable, text, text_input, Column, Container},
     Command as Cm, Element, Length,
 };
 use iced_drop::{droppable, zones_on_point};
@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     caching::{BufferedCache, NDJsonCache, RwMap},
+    response_types::{YTIEKey, YTSearchEntry},
     song::{Song, SongData},
     styling::FullYtmrsScheme,
     user_input::SelectionMode,
@@ -18,10 +19,45 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SearchEntry {
+    Song {
+        id: String,
+        title: Option<String>,
+        url: String,
+    },
+    Tab {
+        id: String,
+        title: Option<String>,
+        url: String,
+    },
+}
+
+#[derive(Debug)]
+pub struct InvalidKind;
+
+impl SearchEntry {
+    pub fn new(entry: YTSearchEntry) -> Result<Self, InvalidKind> {
+        match entry.ie_key {
+            YTIEKey::Youtube => Ok(Self::Song {
+                id: entry.id,
+                title: entry.title,
+                url: entry.url,
+            }),
+            YTIEKey::YoutubeTab => Ok(Self::Tab {
+                id: entry.id,
+                title: entry.title,
+                url: entry.url,
+            }),
+            YTIEKey::YoutubeMusicSearchURL => Err(InvalidKind),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SearchType {
     Song(String),
     Tab(Vec<String>, #[serde(skip)] SelectionMode),
-    Search(Vec<String>),
+    Search(Vec<SearchEntry>),
 }
 
 impl SearchType {
@@ -31,7 +67,7 @@ impl SearchType {
 
     pub fn selected_keys(&self) -> Option<Vec<&String>> {
         match self {
-            Self::Song(s) => Some(vec![&s]),
+            Self::Song(s) => Some(vec![s]),
             Self::Tab(s, mode) => match mode {
                 SelectionMode::None => None,
                 SelectionMode::Single(idx) => s.get(*idx).map(|k| vec![k]),
@@ -42,14 +78,29 @@ impl SearchType {
                     Some(r.clone().filter_map(|idx| s.get(idx)).collect())
                 }
             },
-            Self::Search(_) => todo!(),
+            Self::Search(_) => None,
         }
     }
 
     pub fn used_keys(&self) -> Vec<&String> {
         match self {
             SearchType::Song(ref song) => vec![song],
-            SearchType::Tab(ref v, _) | SearchType::Search(ref v) => v.iter().collect(),
+            SearchType::Tab(ref v, _) => v.iter().collect(),
+            SearchType::Search(ref v) => v
+                .iter()
+                .filter_map(|e| match e {
+                    SearchEntry::Song {
+                        id,
+                        title: _,
+                        url: _,
+                    } => Some(id),
+                    SearchEntry::Tab {
+                        id: _,
+                        title: _,
+                        url: _,
+                    } => None,
+                })
+                .collect(),
         }
     }
 
@@ -96,7 +147,36 @@ impl SearchType {
                     .style(scheme.scrollable_style.clone().update()),
                 )
             }
-            SearchType::Search(_) => todo!(),
+            SearchType::Search(v) => {
+                let items = v.iter().enumerate().map(|(idx, entry)| match entry {
+                    SearchEntry::Song { id, title, url: _ } => droppable(
+                        Element::new(match cached_map.get(id) {
+                            Some(song) => {
+                                let song = song.read();
+                                song.as_data().row(false, false)
+                            }
+                            None => SongData {
+                                title: title.clone().unwrap_or(id.clone()),
+                                channel: "???".to_string(),
+                                artists: None,
+                                duration: 0.,
+                                handle: None,
+                            }
+                            .row(false, false),
+                        })
+                        .map(move |_| SWMessage::SelectSong(idx)),
+                    )
+                    .on_drop(move |pt, rec| SWMessage::Drop(id.clone(), pt, rec))
+                    .on_click(SWMessage::SimpleSelectSong(idx))
+                    .on_single_click(SWMessage::SelectSong(idx))
+                    .into(),
+                    SearchEntry::Tab { id, title, url: _ } => {
+                        Element::new(text(title.clone().unwrap_or(id.clone())))
+                    }
+                });
+
+                Element::new(scrollable(Column::with_children(items)))
+            }
         }
     }
 }

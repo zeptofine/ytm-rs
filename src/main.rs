@@ -38,8 +38,8 @@ use crate::{
     ytmrs::{Ytmrs, YtmrsMsg},
 };
 
-pub const BACKGROUND_TRANSITION_DURATION: Duration = Duration::from_millis(500);
-pub const BACKGROUND_TRANSITION_RATE: Duration = Duration::from_millis(1000 / 20); // ~15fps
+pub const BACKGROUND_TRANSITION_DURATION: Duration = Duration::from_millis(1000);
+pub const BACKGROUND_TRANSITION_RATE: Duration = Duration::from_millis(1000 / 40); // ~15fps
 
 #[derive(Debug)]
 struct MainState {
@@ -277,7 +277,7 @@ pub fn main() -> iced::Result {
             #[cfg(target_os = "windows")]
             platform_specific: window::settings::PlatformSpecific {
                 parent: None,
-                drag_and_drop: true,
+                drag_and_drop: false,
                 skip_taskbar: false,
             },
             #[cfg(target_os = "linux")]

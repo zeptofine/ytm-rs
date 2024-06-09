@@ -1,4 +1,4 @@
-use std::{fmt::Debug, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 use parking_lot::RwLock;
 
@@ -21,28 +21,16 @@ impl<T: IDed<String> + Debug> FolderCache<T> {
 impl<T: Debug + IDed<String> + From<(String, Vec<u8>)>> BufferedCache<String, T>
     for FolderCache<T>
 {
-    fn items<'a>(&'a self) -> impl Iterator<Item = (&'a String, &'a Arc<RwLock<T>>)>
-    where
-        String: 'a,
-        T: 'a,
-    {
-        self.map.iter()
+    fn items(&self) -> &HashMap<String, Arc<RwLock<T>>> {
+        &self.map
     }
-
-    fn keys(&self) -> std::collections::hash_map::Keys<'_, String, Arc<RwLock<T>>> {
-        self.map.keys()
+    fn items_mut(&mut self) -> &mut HashMap<String, Arc<RwLock<T>>> {
+        &mut self.map
     }
 
     fn drop_from_cache(&mut self, keys: impl IntoIterator<Item = String>) {
         keys.into_iter().for_each(|id| {
             self.map.remove(&id);
         })
-    }
-
-    fn push_cache<I>(&mut self, items: I)
-    where
-        I: IntoIterator<Item = (String, Arc<RwLock<T>>)>,
-    {
-        self.map.extend(items);
     }
 }

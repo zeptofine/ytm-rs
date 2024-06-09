@@ -1,4 +1,4 @@
-use std::{collections::hash_map::Keys, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -27,27 +27,16 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> NDJsonCache<T> {
 impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> BufferedCache<String, T>
     for NDJsonCache<T>
 {
-    fn items<'a>(&'a self) -> impl Iterator<Item = (&'a String, &'a Arc<RwLock<T>>)>
-    where
-        T: 'a,
-    {
-        self.map.iter()
+    fn items(&self) -> &HashMap<String, Arc<RwLock<T>>> {
+        &self.map
     }
-
-    fn keys(&self) -> Keys<'_, String, Arc<RwLock<T>>> {
-        self.map.keys()
+    fn items_mut(&mut self) -> &mut HashMap<String, Arc<RwLock<T>>> {
+        &mut self.map
     }
 
     fn drop_from_cache(&mut self, keys: impl IntoIterator<Item = String>) {
         keys.into_iter().for_each(|key| {
             self.map.remove(&key);
         });
-    }
-
-    fn push_cache<I>(&mut self, items: I)
-    where
-        I: IntoIterator<Item = (String, Arc<RwLock<T>>)>,
-    {
-        self.map.extend(items);
     }
 }

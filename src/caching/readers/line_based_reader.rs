@@ -4,6 +4,8 @@ use std::{collections::HashMap, fs::File, io::Write, path::PathBuf};
 use async_std::{fs as afs, io::prelude::BufReadExt};
 use async_std::{io as aio, stream::StreamExt};
 
+use fs4::async_std::AsyncFileExt;
+use fs4::FileExt;
 use serde::{Deserialize, Serialize};
 
 use crate::caching::IDed;
@@ -44,12 +46,20 @@ impl<T: IDed<String> + Serialize + for<'de> Deserialize<'de>> CacheReader<String
 {
     async fn read(&self) -> Result<Vec<SourceItemPair<String, T>>, std::io::Error> {
         let file = afs::File::open(&self.filepath).await?;
-        let reader = aio::BufReader::new(file);
+        println![
+            "(READ) LOCKING {:?}: {:?}",
+            self.filepath,
+            file.lock_shared()
+        ];
+
+        let reader = aio::BufReader::new(&file);
         let mut lines = reader.lines();
         let mut vec: Vec<SourceItemPair<String, T>> = Vec::new();
         while let Some(Ok(line)) = lines.next().await {
             serde_json::from_str::<T>(&line).map(|s| vec.push(SourceItemPair(line, s)))?;
         }
+        println!["(READ) UNLOCKING {:?}: {:?}", self.filepath, file.unlock()];
+
         Ok(vec)
     }
     async fn extend<OutT: AsRef<T>, V: AsRef<Vec<OutT>>>(
@@ -73,7 +83,13 @@ impl<T: IDed<String> + Serialize + for<'de> Deserialize<'de>> CacheReader<String
             {
                 // Create the temporary file to write the new list to
                 let output_file = File::create(&tempfile)?;
-                let mut out = std::io::BufWriter::new(output_file);
+                println![
+                    "(XTND) LOCKING {:?}: {:?}",
+                    tempfile,
+                    output_file.lock_exclusive()
+                ];
+
+                let mut out = std::io::BufWriter::new(&output_file);
                 {
                     // Read the original list
                     if let Ok(itemlist) = self.read().await {
@@ -96,9 +112,16 @@ impl<T: IDed<String> + Serialize + for<'de> Deserialize<'de>> CacheReader<String
                     out.write_all(json.as_bytes())?;
                 }
                 out.flush()?;
+
+                println![
+                    "(XTND) UNLOCKING {:?}: {:?}",
+                    tempfile,
+                    output_file.unlock()
+                ];
             }
 
             // Replace songs.ndjson with songs.ndjson.tmp
+
             std::fs::rename(&tempfile, filepath)?;
 
             Ok(())

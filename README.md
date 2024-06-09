@@ -28,13 +28,14 @@ cargo run
 - [x] Tree-based queue system
 - [x] queue system UI
 - [x] Drag 'n dropping items
-- [~] Music player UI like playback, progress, etc.
+- [x] Music player UI like playback, progress, etc.
 - [x] Requesting songs from ytm
-- [ ] Searching for music
+- [ ] Starting the next song after the current song is done.
+- [~] Searching for music
   - [ ] Loading songs
   - [x] Loading tabs (playlists, artists, etc.)
-  - [ ] Loading search results
+  - [x] Loading search results (Songs finished, need to make a Tab view)
 - [x] Downloading songs from youtube
-- [ ] Thumbnails for songs, albums and playlists.
+- [x] Thumbnails for songs, albums and playlists.
 - [ ] Saving playlists/albums as a SongOperation
-- [x] Actually playing music. (I will switch to rodio/kira once they get proper song tracking support.)
+- [x] Actually playing music.

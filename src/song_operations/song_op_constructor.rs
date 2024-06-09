@@ -487,8 +487,10 @@ impl SongOpConstructor {
                 }
             }
             SongOpMessage::NewGroup => {
-                let mut constructor = SongOpConstructor::default();
-                constructor.cache = self.cache.clone();
+                let constructor = SongOpConstructor {
+                    cache: self.cache.clone(),
+                    ..Default::default()
+                };
                 self.list.push(ConstructorItem::Operation(constructor));
                 println!["Group added"];
                 println!["{:#?}", self.list];

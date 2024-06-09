@@ -96,14 +96,7 @@ impl From<(String, PathBuf)> for SoundData {
         SoundData(value.0, SoundDataType::Stream(sound.unwrap()))
     }
 }
-impl From<(String, Vec<u8>)> for SoundData {
-    fn from(value: (String, Vec<u8>)) -> Self {
-        let sound = StaticSoundData::from_cursor(Cursor::new(value.1));
-        println!["Created sound from bytes"];
 
-        SoundData(value.0, SoundDataType::Static(sound.unwrap()))
-    }
-}
 impl IDed<String> for SoundData {
     #[inline]
     fn id(&self) -> &String {

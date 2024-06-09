@@ -19,7 +19,7 @@ pub struct YTabEntry {
     pub url: UrlString,
     pub title: String,
     pub description: Option<String>,
-    pub duration: f32,
+    pub duration: f64,
     pub view_count: Option<usize>,
     pub channel: String,
     pub channel_url: String,
@@ -75,7 +75,6 @@ pub struct RequestedDownload {
 
 #[derive(Debug, Clone)]
 pub enum YTResponseError {
-    ExtractionErr,
     ParseErr,
 }
 
@@ -95,25 +94,20 @@ pub enum YTResponseType {
 
 #[derive(Deserialize)]
 struct ExtractorKey {
-    extractor_key: String,
+    extractor_key: YTIEKey,
 }
 
 impl YTResponseType {
     pub fn new(full_response: String) -> Result<Self, YTResponseError> {
         let extractor: ExtractorKey = serde_json::from_str(&full_response)?;
         let key = extractor.extractor_key.borrow();
-        println!["{key}"];
 
         match key {
-            "Youtube" => Ok(YTResponseType::Song(serde_json::from_str(&full_response)?)),
-            "YoutubeTab" => Ok(YTResponseType::Tab(serde_json::from_str(&full_response)?)),
-            "YoutubeMusicSearchURL" => Ok(YTResponseType::Search(serde_json::from_str(
+            YTIEKey::Youtube => Ok(YTResponseType::Song(serde_json::from_str(&full_response)?)),
+            YTIEKey::YoutubeTab => Ok(YTResponseType::Tab(serde_json::from_str(&full_response)?)),
+            YTIEKey::YoutubeMusicSearchURL => Ok(YTResponseType::Search(serde_json::from_str(
                 &full_response,
             )?)),
-            _ => {
-                println!["Unrecognized key: {key}"];
-                Err(YTResponseError::ExtractionErr)
-            }
         }
     }
 }

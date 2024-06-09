@@ -1,4 +1,4 @@
-use std::{future::Future, process, time::Duration};
+use std::{borrow::Borrow, future::Future, process, time::Duration};
 
 use iced::Command;
 use reqwest::{Client, Url};
@@ -151,6 +151,10 @@ impl BackendHandler {
             BackendLaunchStatus::PythonMissing => todo!(),
         }
         None
+    }
+
+    pub fn request_url_from_id<T: Borrow<String>>(id: T) -> String {
+        format!("https://music.youtube.com/watch?v={}", id.borrow())
     }
 
     pub fn request_info(&self, url: String) -> Option<impl Future<Output = RequestResult>> {

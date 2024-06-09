@@ -1,7 +1,7 @@
-use std::{collections::HashSet, hash::Hash, sync::Arc};
-
 use futures::Future;
 use parking_lot::RwLock;
+use std::io::Result as IoResult;
+use std::{collections::HashSet, hash::Hash, sync::Arc};
 
 use crate::caching::IDed;
 
@@ -16,19 +16,22 @@ where
     IDT: Eq + PartialEq + Hash + Clone,
     OutT: IDed<IDT>,
 {
-    async fn read(&self) -> Result<Vec<SourceItemPair<SrcT, OutT>>, std::io::Error>;
+    async fn read(&self) -> IoResult<Vec<SourceItemPair<SrcT, OutT>>>;
 
     async fn read_filter(
         &self,
         f: &HashSet<IDT>,
-    ) -> Result<Vec<impl Future<Output = SourceItemPair<SrcT, OutT>>>, std::io::Error> {
+    ) -> IoResult<Vec<(IDT, impl Future<Output = SourceItemPair<SrcT, OutT>>)>> {
         Ok(self
             .read()
             .await?
             .into_iter()
-            .filter_map(|i| match f.contains(i.1.id()) {
-                true => Some(async { i }),
-                false => None,
+            .filter_map(|i| {
+                let id = i.1.id().clone();
+                match f.contains(&id) {
+                    true => Some((id, async { i })),
+                    false => None,
+                }
             })
             .collect())
     }
@@ -42,8 +45,9 @@ where
             false => {
                 let futures = self.read_filter(ids).await;
                 match futures {
-                    Ok(iter) => {
-                        let items = futures::future::join_all(iter).await;
+                    Ok(v) => {
+                        let futures = v.into_iter().map(|(_, f)| f);
+                        let items = futures::future::join_all(futures).await;
                         items
                             .into_iter()
                             .map(

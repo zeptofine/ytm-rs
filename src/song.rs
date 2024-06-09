@@ -177,17 +177,24 @@ impl SongData {
     }
 
     /// Creates the thumbnail of the song data, replacing with "???" text upon missing data.
-    pub fn row<'a>(self, clickable: bool, hover_play_button: bool) -> Row<'a, SongMessage> {
-        let img = match Self::img(self.handle.clone(), 80, 80) {
+    fn image_or_placeholder<'a, M>(
+        h: Option<iced_image::Handle>,
+        width: u16,
+        height: u16,
+    ) -> Element<'a, M> {
+        match Self::img(h, width, height) {
             Some(img) => Element::new(img),
-            None => Element::new(Self::placeholder(80, 80)),
-        };
+            None => Element::new(Self::placeholder(width, height)),
+        }
+    }
+
+    pub fn row<'a>(self, clickable: bool, hover_play_button: bool) -> Row<'a, SongMessage> {
+        let img = Self::image_or_placeholder(self.handle.clone(), 80, 80);
 
         let c = match clickable {
             false => img,
             true => button(img)
-                .width(80)
-                .height(80)
+                .padding(0)
                 .on_press(SongMessage::ThumbnailClicked)
                 .style(|_, _| widget::button::Style {
                     background: None,
