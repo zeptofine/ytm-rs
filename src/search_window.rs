@@ -170,7 +170,11 @@ impl SearchType {
                     }
                 });
 
-                Element::new(scrollable(Column::with_children(items)))
+                Element::new(
+                    scrollable(Column::with_children(items))
+                        .width(Length::Fill)
+                        .style(scheme.scrollable_style.clone().update()),
+                )
             }
         }
     }

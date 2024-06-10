@@ -842,7 +842,15 @@ impl Ytmrs {
             }
         } else if let Some((id, _)) = zones.last() {
             if *id == WId::new("base_drop_target") {
-                top.push_to_path(VecDeque::new(), key.into());
+                let mut idx = top.list.len();
+
+                for item in targets
+                    .into_iter()
+                    .map(|k| ConstructorItem::from(k.clone()))
+                {
+                    top.push_to_path(VecDeque::from([idx]), item);
+                    idx += 1;
+                }
             }
         }
     }
