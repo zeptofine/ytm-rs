@@ -5,8 +5,7 @@ use serde::{Deserialize, Serialize};
 use iced::{
     advanced::image as iced_image,
     alignment::{Horizontal, Vertical},
-    widget::{self, button, column, container, hover, row, text, Image, Row, Text},
-    Alignment, Background, Border, Color, Element, Length, Shadow, Vector,
+    widget::{self, button, column, container, hover, row, text, Image, Row, Text}, Background, Border, Color, Element, Length, Shadow, Vector,
 };
 
 #[cfg(feature = "svg")]
@@ -176,8 +175,8 @@ impl SongData {
         text("???")
             .height(height)
             .width(width)
-            .horizontal_alignment(iced::alignment::Horizontal::Center)
-            .vertical_alignment(iced::alignment::Vertical::Center)
+            .align_x(Horizontal::Center)
+            .align_y(Vertical::Center)
     }
 
     /// Creates the thumbnail of the song data, replacing with "???" text upon missing data.
@@ -262,7 +261,7 @@ impl SongData {
             )),]
             .width(Length::Fill),
         ];
-        row.spacing(8).padding(0).align_items(Alignment::Center)
+        row.spacing(8).padding(0)
     }
 }
 

@@ -1,6 +1,6 @@
 use std::{borrow::Borrow, future::Future, process, time::Duration};
 
-use iced::Command;
+use iced::Task;
 use reqwest::{Client, Url};
 use serde::Serialize;
 
@@ -129,7 +129,7 @@ impl BackendHandler {
         Ok(())
     }
 
-    pub fn poll(&mut self) -> Option<Command<YtmrsMsg>> {
+    pub fn poll(&mut self) -> Option<Task<YtmrsMsg>> {
         match &mut self.status {
             BackendLaunchStatus::Launched(ConnectionMode::Child(ref mut c, _)) => {
                 if let Ok(Some(status)) = c.try_wait() {
@@ -137,7 +137,7 @@ impl BackendHandler {
                 }
             }
             BackendLaunchStatus::Launched(ConnectionMode::External(ref mut url)) => {
-                return Some(Command::perform(
+                return Some(Task::perform(
                     Self::poll_external_server(url.clone()),
                     |r| match r {
                         Ok(()) => YtmrsMsg::BackendStatusPollSuccess,
@@ -146,9 +146,9 @@ impl BackendHandler {
                 ));
             }
             BackendLaunchStatus::Unknown => {}
-            BackendLaunchStatus::Failed(_) => todo!(),
-            BackendLaunchStatus::Exited(_) => todo!(),
-            BackendLaunchStatus::PythonMissing => todo!(),
+            BackendLaunchStatus::Failed(_) => {}
+            BackendLaunchStatus::Exited(_) => {}
+            BackendLaunchStatus::PythonMissing => {}
         }
         None
     }

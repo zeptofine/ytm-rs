@@ -4,9 +4,8 @@ use iced::{
     alignment::Horizontal,
     keyboard::Modifiers,
     widget::{column, scrollable, text, text_input, Column, Container},
-    Command as Cm, Element, Length,
+    Element, Length, Task,
 };
-use iced_drop::{droppable, zones_on_point};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -116,22 +115,18 @@ impl SearchType {
                 let songs = v.iter().enumerate().map(|(idx, key)| {
                     let selected = mode.contains(idx);
                     let style = scheme.song_appearance.update(selected);
-                    droppable(
-                        Container::new(
-                            Element::new(match cached_map.get(key) {
-                                Some(songc) => {
-                                    let song = songc.read();
-                                    song.as_data().row(true, false)
-                                }
-                                None => SongData::mystery_with_title(key.clone()).row(true, false),
-                            })
-                            .map(move |_| SWMessage::SelectSong(idx)),
-                        )
-                        .style(move |_| style),
+
+                    Container::new(
+                        Element::new(match cached_map.get(key) {
+                            Some(songc) => {
+                                let song = songc.read();
+                                song.as_data().row(true, false)
+                            }
+                            None => SongData::mystery_with_title(key.clone()).row(true, false),
+                        })
+                        .map(move |_| SWMessage::SelectSong(idx)),
                     )
-                    .on_drop(move |pt, rec| SWMessage::Drop(key.clone(), pt, rec))
-                    .on_click(SWMessage::SimpleSelectSong(idx))
-                    .on_single_click(SWMessage::SelectSong(idx))
+                    .style(move |_| style)
                     .into()
                 });
 
@@ -148,7 +143,7 @@ impl SearchType {
             }
             SearchType::Search(v) => {
                 let items = v.iter().enumerate().map(|(idx, entry)| match entry {
-                    SearchEntry::Song { id, title, url: _ } => droppable(
+                    SearchEntry::Song { id, title, url: _ } => {
                         Element::new(match cached_map.get(id) {
                             Some(song) => {
                                 let song = song.read();
@@ -159,12 +154,9 @@ impl SearchType {
                                     .row(false, false)
                             }
                         })
-                        .map(move |_| SWMessage::SelectSong(idx)),
-                    )
-                    .on_drop(move |pt, rec| SWMessage::Drop(id.clone(), pt, rec))
-                    .on_click(SWMessage::SimpleSelectSong(idx))
-                    .on_single_click(SWMessage::SelectSong(idx))
-                    .into(),
+                        .map(move |_| SWMessage::SelectSong(idx))
+                    }
+
                     SearchEntry::Tab { id, title, url: _ } => {
                         Element::new(text(title.clone().unwrap_or(id.clone())))
                     }
@@ -234,7 +226,7 @@ impl SearchWindow {
         column![search_query, self.search_type.view(scheme, cached_map)].into()
     }
 
-    pub fn update(&mut self, msg: SWMessage, mods: &Modifiers) -> Cm<SWMessage> {
+    pub fn update(&mut self, msg: SWMessage, mods: &Modifiers) -> Task<SWMessage> {
         match msg {
             SWMessage::SimpleSelectSong(idx) => {
                 if let SearchType::Tab(_, ref mut mode) = self.search_type {
@@ -242,28 +234,23 @@ impl SearchWindow {
                         *mode = SelectionMode::Single(idx);
                     }
                 }
-                Cm::none()
+                Task::none()
             }
             SWMessage::SelectSong(idx) => {
                 if let SearchType::Tab(_, ref mut mode) = self.search_type {
                     *mode = mode.clone().update_selection(idx, mods);
                 }
-                Cm::none()
+                Task::none()
             }
 
             // Handle dragndrop
-            SWMessage::Drop(key, point, _) => zones_on_point(
-                move |zones| SWMessage::HandleZones(key.clone(), zones),
-                point,
-                None,
-                None,
-            ),
+            SWMessage::Drop(_key, _point, _) => unreachable!(),
             SWMessage::HandleZones(_, _) => unreachable!(),
             SWMessage::SearchQueryChanged(s) => {
                 self.query = s;
-                Cm::none()
+                Task::none()
             }
-            SWMessage::SearchQuerySubmitted => Cm::none(),
+            SWMessage::SearchQuerySubmitted => Task::none(),
         }
     }
 }

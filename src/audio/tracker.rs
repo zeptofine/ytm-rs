@@ -2,8 +2,9 @@ use super::YTMRSAudioManager;
 use crate::{settings::YTMRUserSettings, song::format_duration, styling::FullYtmrsScheme};
 use iced::{
     alignment::Vertical,
+    border,
     widget::{button, column, container, hover, progress_bar, row, slider, Text},
-    Alignment, Border, Color, Command, Element, Length,
+    Alignment, Color, Element, Length, Task as T,
 };
 
 #[cfg(feature = "svg")]
@@ -121,7 +122,7 @@ impl AudioProgressTracker {
                     .style(move |_| progress_bar::Style {
                         background: iced::Background::Color(Color::BLACK),
                         bar: iced::Background::Color(progress_color),
-                        border: Border::rounded(0),
+                        border: border::rounded(0),
                     }),
             )
             .align_y(Vertical::Center)
@@ -163,31 +164,31 @@ impl AudioProgressTracker {
                 row![
                     row![duration_display].width(Length::Fill),
                     column![row![previous_button, pause_play_button, next_button]]
-                        .align_items(Alignment::Center)
+                        .align_x(Alignment::Center)
                         .width(Length::Fill),
                     column![volume_slider.width(100)]
-                        .align_items(Alignment::End)
+                        .align_x(Alignment::End)
                         .width(Length::Fill),
                 ]
                 .padding(10)
-                .align_items(Alignment::Center)
+                .align_y(Alignment::Center)
             ]
             .width(Length::Fill),
         )
     }
 
-    pub fn update(&mut self, signal: TrackerMsg) -> Command<TrackerMsg> {
+    pub fn update(&mut self, signal: TrackerMsg) -> T<TrackerMsg> {
         match signal {
             TrackerMsg::ProgressSliderChanged(v) => {
                 self.elapsed = Some(v);
-                Command::none()
+                T::none()
             }
             TrackerMsg::Pause => todo!(),
             TrackerMsg::Play => todo!(),
             TrackerMsg::Next => todo!(),
             TrackerMsg::Previous => todo!(),
             TrackerMsg::UpdateVolume(_) => todo!(),
-            TrackerMsg::ProgressSliderReleased(_) => Command::none(),
+            TrackerMsg::ProgressSliderReleased(_) => T::none(),
         }
     }
 }

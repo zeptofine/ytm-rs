@@ -1,12 +1,10 @@
 import sys
 from copy import deepcopy
-from queue import Queue
-from threading import Thread
 from typing import TypedDict
 from urllib import parse as urlparse
 
 import orjson
-from flask import Flask, logging, request
+from flask import Flask, request
 from yt_dlp import YoutubeDL
 
 app = Flask(__name__)
@@ -30,6 +28,10 @@ opts = {
         {"key": "FFmpegConcat", "only_multi_video": True, "when": "playlist"},
     ],
     "retries": 10,
+    "verbose": True,
+    # Oauth2
+    # "password": "''",
+    # "username": "oauth2",
 }
 
 

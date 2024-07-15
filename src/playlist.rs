@@ -1,6 +1,6 @@
 use iced::{
     widget::{button, column, row, scrollable, text, text_input},
-    Command, Element,
+    Element, Task,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -63,13 +63,13 @@ impl Playlist {
         column![row![name_edit, save_button], constructor].into()
     }
 
-    pub fn update(&mut self, message: PlaylistMessage) -> Command<PlaylistMessage> {
+    pub fn update(&mut self, message: PlaylistMessage) -> Task<PlaylistMessage> {
         match message {
             PlaylistMessage::NameEdited(value) => {
                 self.name = value;
-                Command::none()
+                Task::none()
             }
-            _ => Command::none(),
+            _ => Task::none(),
         }
     }
 }

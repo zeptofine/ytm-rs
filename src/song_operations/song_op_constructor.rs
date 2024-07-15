@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet},
     sync::Arc,
 };
 
@@ -9,9 +9,8 @@ use iced::{
     widget::{
         button, column, container, pick_list, row, text, text_input, Column, Container, Row, Space,
     },
-    Command as Cm, Element, Length, Renderer, Theme,
+    Element, Length, Renderer, Task as T, Theme,
 };
-use iced_drop::{droppable, zones_on_point};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
@@ -64,9 +63,17 @@ impl ActualRecursiveOps {
 pub trait TreeDirected {
     // TODO: These methods are not as ass but they could be better probably
 
-    fn push_to_path(&mut self, pth: VecDeque<usize>, item: ConstructorItem);
+    fn push_to_path(&mut self, pth: &[usize], item: ConstructorItem) {
+        self.push_to_path_(pth, 0, item)
+    }
 
-    fn pop_path(&mut self, pth: VecDeque<usize>) -> Option<ConstructorItem>;
+    fn push_to_path_(&mut self, pth: &[usize], pidx: usize, item: ConstructorItem);
+
+    fn pop_path(&mut self, pth: &[usize]) -> Option<ConstructorItem> {
+        self.pop_path_(pth, 0)
+    }
+
+    fn pop_path_(&mut self, pth: &[usize], pidx: usize) -> Option<ConstructorItem>;
 
     fn item_has_id(&mut self, id: &WId) -> bool {
         self.path_to_id(id).is_some()
@@ -74,9 +81,17 @@ pub trait TreeDirected {
 
     fn path_to_id(&self, id: &WId) -> Option<Vec<usize>>;
 
-    fn item_at_path(&self, pth: VecDeque<usize>) -> Option<&ConstructorItem>;
+    fn item_at_path(&self, pth: &[usize]) -> Option<&ConstructorItem> {
+        self.item_at_path_(pth, 0)
+    }
 
-    fn item_at_path_mut(&mut self, pth: VecDeque<usize>) -> Option<&mut ConstructorItem>;
+    fn item_at_path_(&self, pth: &[usize], idx: usize) -> Option<&ConstructorItem>;
+
+    fn item_at_path_mut(&mut self, pth: &[usize]) -> Option<&mut ConstructorItem> {
+        self.item_at_path_mut_(pth, 0)
+    }
+
+    fn item_at_path_mut_(&mut self, pth: &[usize], idx: usize) -> Option<&mut ConstructorItem>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,17 +119,17 @@ impl From<SongOpConstructor> for ConstructorItem {
 }
 
 impl TreeDirected for ConstructorItem {
-    fn push_to_path(&mut self, pth: VecDeque<usize>, item: ConstructorItem) {
+    fn push_to_path_(&mut self, pth: &[usize], pidx: usize, item: ConstructorItem) {
         match self {
             ConstructorItem::Song(_, _) => (),
-            ConstructorItem::Operation(op) => op.push_to_path(pth, item),
+            ConstructorItem::Operation(op) => op.push_to_path_(pth, pidx, item),
         }
     }
 
-    fn pop_path(&mut self, pth: VecDeque<usize>) -> Option<ConstructorItem> {
+    fn pop_path_(&mut self, pth: &[usize], pidx: usize) -> Option<ConstructorItem> {
         match self {
             ConstructorItem::Song(_, _) => None,
-            ConstructorItem::Operation(op) => op.pop_path(pth),
+            ConstructorItem::Operation(op) => op.pop_path_(pth, pidx),
         }
     }
 
@@ -131,23 +146,23 @@ impl TreeDirected for ConstructorItem {
         }
     }
 
-    fn item_at_path(&self, pth: VecDeque<usize>) -> Option<&ConstructorItem> {
-        if pth.is_empty() {
+    fn item_at_path_(&self, pth: &[usize], idx: usize) -> Option<&ConstructorItem> {
+        if pth.len() == idx {
             return Some(self);
         }
         match self {
             ConstructorItem::Song(_, _) => None,
-            ConstructorItem::Operation(op) => op.item_at_path(pth),
+            ConstructorItem::Operation(op) => op.item_at_path_(pth, idx + 1),
         }
     }
 
-    fn item_at_path_mut(&mut self, pth: VecDeque<usize>) -> Option<&mut ConstructorItem> {
-        if pth.is_empty() {
+    fn item_at_path_mut_(&mut self, pth: &[usize], idx: usize) -> Option<&mut ConstructorItem> {
+        if pth.len() == idx {
             return Some(self);
         }
         match self {
             ConstructorItem::Song(_, _) => None,
-            ConstructorItem::Operation(op) => op.item_at_path_mut(pth),
+            ConstructorItem::Operation(op) => op.item_at_path_mut_(pth, idx + 1),
         }
     }
 }
@@ -208,7 +223,7 @@ pub enum SongOpMessage {
 }
 
 pub enum UpdateResult {
-    Cm(Cm<SongOpMessage>),
+    Cm(T<SongOpMessage>),
     SongClicked(WId),
     Move(WId, WId), // from, to
 }
@@ -330,7 +345,7 @@ impl SongOpConstructor {
                     self.operation.as_str(),
                     self.list.len()
                 ))
-                .vertical_alignment(Vertical::Center),
+                .align_y(Vertical::Center),
                 Space::with_width(Length::Fill)
             ]
             .into(),
@@ -350,7 +365,7 @@ impl SongOpConstructor {
                 true => Some(button("x").on_press(SongOpMessage::CloseSelf)),
             })
             .spacing(0)
-            .align_items(iced::Alignment::Center)
+            .align_y(Vertical::Center)
     }
 
     fn get_children(&self, scheme: &FullYtmrsScheme) -> Row<'_, SongOpMessage, Theme, Renderer> {
@@ -383,33 +398,33 @@ impl SongOpConstructor {
                         None => SongData::mystery_with_title(key.clone()),
                     }
                 };
-                let wid = WId::from(sid.0.clone());
                 let swid = WId::from(sid.0.clone());
                 let song = Element::new(data.row(true, true))
                     .map(move |_| SongOpMessage::SongClicked(swid.clone()));
 
                 container(
                     row![
-                        droppable(song)
-                            .drag_mode(false, true)
-                            .drag_hide(true)
-                            .on_single_click(SongOpMessage::SongClicked(wid.clone()))
-                            .on_drop(move |pt, rec| SongOpMessage::Dropped(wid.clone(), pt, rec)),
+                        song,
+                        // droppable()
+                        //     .drag_mode(false, true)
+                        //     .drag_hide(true)
+                        //     .on_single_click(SongOpMessage::SongClicked(wid.clone()))
+                        //     .on_drop(move |pt, rec| SongOpMessage::Dropped(wid.clone(), pt, rec)),
                         button("x").on_press(SongOpMessage::Remove(idx))
                     ]
-                    .align_items(iced::Alignment::Center),
+                    .align_y(iced::Alignment::Center),
                 )
                 .id(sid.0.clone())
                 .into()
             }
             ConstructorItem::Operation(constructor) => Element::new(
-                droppable(constructor.view_nested(scheme))
-                    .drag_mode(false, true)
-                    .drag_hide(true)
-                    .on_drag(move |_, _| SongOpMessage::Collapse)
-                    .on_drop(move |pt, rec| {
-                        SongOpMessage::Dropped(constructor.id.0.clone().into(), pt, rec)
-                    }),
+                constructor.view_nested(scheme), // droppable()
+                                                 //     .drag_mode(false, true)
+                                                 //     .drag_hide(true)
+                                                 //     .on_drag(move |_, _| SongOpMessage::Collapse)
+                                                 //     .on_drop(move |pt, rec| {
+                                                 //         SongOpMessage::Dropped(constructor.id.0.clone().into(), pt, rec)
+                                                 //     }),
             )
             .map(move |msg| {
                 SongOpMessage::ItemMessage(idx, CItemMessage::Operation(Box::new(msg)))
@@ -507,13 +522,14 @@ impl SongOpConstructor {
                 self.operation = op;
                 None
             }
-            SongOpMessage::Dropped(original_id, point, _rec) => {
-                Some(UpdateResult::Cm(zones_on_point(
-                    move |zones| SongOpMessage::HandleZones(original_id.clone(), zones),
-                    point,
-                    None,
-                    None,
-                )))
+            SongOpMessage::Dropped(_original_id, _point, _rec) => {
+                // Some(UpdateResult::Cm(zones_on_point(
+                //     move |zones| SongOpMessage::HandleZones(original_id.clone(), zones),
+                //     point,
+                //     None,
+                //     None,
+                // )))
+                None
             }
             SongOpMessage::HandleZones(original_id, zones) => {
                 // TODO: This assumes the last zone was the desired target
@@ -574,36 +590,40 @@ impl From<Vec<ConstructorItem>> for SongOpConstructor {
     }
 }
 impl TreeDirected for SongOpConstructor {
-    fn push_to_path(&mut self, mut pth: VecDeque<usize>, item: ConstructorItem) {
-        let next_idx = pth.pop_front();
-        match next_idx {
+    fn push_to_path_(&mut self, pth: &[usize], pidx: usize, item: ConstructorItem) {
+        match pth.get(pidx) {
             None => {
                 self.list.push(item);
             }
             Some(next_idx) => {
                 let list_len = self.list.len();
-                let subitem = &mut self.list[next_idx.min(list_len - 1)];
+                let subitem = &mut self.list[*next_idx.min(&(list_len - 1))];
                 match subitem {
-                    ConstructorItem::Song(_, _) => self.insert(next_idx, item),
-                    ConstructorItem::Operation(_) => subitem.push_to_path(pth, item),
+                    ConstructorItem::Song(_, _) => self.insert(*next_idx, item),
+                    ConstructorItem::Operation(_) => {
+                        subitem.push_to_path_(pth, pidx + 1, item);
+                    }
                 }
             }
         }
     }
 
-    fn pop_path(&mut self, mut pth: VecDeque<usize>) -> Option<ConstructorItem> {
-        let next_idx = pth.pop_front()?;
-        let subitem = &mut self.list[next_idx];
-        match subitem {
-            ConstructorItem::Song(_, _) => Some(self.list.remove(next_idx)),
-            ConstructorItem::Operation(_) => {
-                println!["PATH:{:?}", pth];
-                if pth.is_empty() {
-                    Some(self.list.remove(next_idx))
-                } else {
-                    subitem.pop_path(pth)
-                }
-            }
+    fn pop_path_(&mut self, pth: &[usize], pidx: usize) -> Option<ConstructorItem> {
+        match pth.get(pidx) {
+            None => None,
+            Some(next_idx) => match self.list.get_mut(*next_idx) {
+                Some(subitem) => match subitem {
+                    ConstructorItem::Song(_, _) => Some(self.list.remove(*next_idx)),
+                    ConstructorItem::Operation(_) => {
+                        if pth.len() == pidx + 1 {
+                            Some(self.list.remove(*next_idx))
+                        } else {
+                            subitem.pop_path_(pth, pidx + 1)
+                        }
+                    }
+                },
+                None => None,
+            },
         }
     }
 
@@ -628,28 +648,27 @@ impl TreeDirected for SongOpConstructor {
         }
     }
 
-    fn item_at_path(&self, mut pth: VecDeque<usize>) -> Option<&ConstructorItem> {
-        if pth.is_empty() {
+    fn item_at_path_(&self, pth: &[usize], idx: usize) -> Option<&ConstructorItem> {
+        if pth.len() == idx {
             return None;
         }
-        let next_idx = pth.pop_front()?;
-        let subitem = &self.list.get(next_idx)?;
-        if pth.is_empty() {
+        let subitem = self.list.get(idx)?;
+        if pth.len() == idx + 1 {
             Some(subitem)
         } else {
-            subitem.item_at_path(pth)
+            subitem.item_at_path_(pth, idx + 1)
         }
     }
-    fn item_at_path_mut(&mut self, mut pth: VecDeque<usize>) -> Option<&mut ConstructorItem> {
-        if pth.is_empty() {
+
+    fn item_at_path_mut_(&mut self, pth: &[usize], idx: usize) -> Option<&mut ConstructorItem> {
+        if pth.len() == idx {
             return None;
         }
-        let next_idx = pth.pop_front()?;
-        let subitem = self.list.get_mut(next_idx)?;
-        if pth.is_empty() {
+        let subitem = self.list.get_mut(idx)?;
+        if pth.len() == idx + 1 {
             Some(subitem)
         } else {
-            subitem.item_at_path_mut(pth)
+            subitem.item_at_path_mut_(pth, idx + 1)
         }
     }
 }

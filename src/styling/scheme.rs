@@ -8,8 +8,8 @@ use iced::{
 
 use crate::{
     styling::{
-        ease_out_cubic, interpolate_color, PickListStyle, PickMenuStyle, PlaybackButtonStyle,
-        ScrollableStyle, SongStyle,
+        ease_out_cubic, interpolate_color, PickListStyle, PlaybackButtonStyle, ScrollableStyle,
+        SongStyle,
     },
     BACKGROUND_TRANSITION_DURATION, BACKGROUND_TRANSITION_RATE,
 };
@@ -146,7 +146,6 @@ pub struct FullYtmrsScheme {
     pub song_appearance: SongStyle,
     pub scrollable_style: ScrollableStyle,
     pub pick_list_style: PickListStyle,
-    pub pick_menu_style: PickMenuStyle,
     pub playback_button_style: PlaybackButtonStyle,
 }
 

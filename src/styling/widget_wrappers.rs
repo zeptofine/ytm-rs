@@ -1,9 +1,7 @@
 use iced::{
+    border,
     overlay::menu,
-    widget::{
-        button, container, pick_list,
-        scrollable::{self, Scrollbar, Scroller},
-    },
+    widget::{button, container, pick_list, scrollable},
     Background, Border, Color, Theme,
 };
 
@@ -40,22 +38,20 @@ impl Default for ScrollableStyle {
                 background: None,
                 ..Default::default()
             },
-            vertical_scrollbar: Scrollbar {
+            vertical_rail: scrollable::Rail {
                 background: None,
-                border: Border::rounded(12)
-                    .with_width(1)
-                    .with_color(Color::TRANSPARENT),
-                scroller: Scroller {
+                border: border::rounded(12).width(1).color(Color::TRANSPARENT),
+                scroller: scrollable::Scroller {
                     color: Color::TRANSPARENT,
-                    border: Border::rounded(8),
+                    border: border::rounded(8),
                 },
             },
-            horizontal_scrollbar: Scrollbar {
+            horizontal_rail: scrollable::Rail {
                 background: Some(Background::Color(Color::BLACK)),
-                border: Border::rounded(2).with_width(1),
-                scroller: Scroller {
+                border: border::rounded(2).width(1),
+                scroller: scrollable::Scroller {
                     color: Color::WHITE,
-                    border: Border::rounded(8),
+                    border: border::rounded(8),
                 },
             },
             gap: None,
@@ -73,12 +69,14 @@ impl ScrollableStyle {
                     is_vertical_scrollbar_hovered: vert,
                 } => {
                     if vert {
-                        style.vertical_scrollbar.scroller.color = Color::WHITE;
-                        style.vertical_scrollbar.border = Border::rounded(8)
-                            .with_width(1)
-                            .with_color(Color::new(1., 1., 1., 0.01));
+                        style.vertical_rail.scroller.color = Color::WHITE;
+                        style.vertical_rail.border = style
+                            .vertical_rail
+                            .border
+                            .width(1)
+                            .color(Color::new(1., 1., 1., 0.01));
                     } else {
-                        style.vertical_scrollbar.scroller.color = Color::new(1., 1., 1., 0.05);
+                        style.vertical_rail.scroller.color = Color::new(1., 1., 1., 0.05);
                     }
                 }
                 scrollable::Status::Dragged {
@@ -86,11 +84,12 @@ impl ScrollableStyle {
                     is_vertical_scrollbar_dragged: vert,
                 } => {
                     if vert {
-                        style.vertical_scrollbar.scroller.color = Color::WHITE;
-                        style.vertical_scrollbar.scroller.border = Border::rounded(6);
-                        style.vertical_scrollbar.border = Border::rounded(8)
-                            .with_width(2)
-                            .with_color(Color::new(1., 1., 1., 0.02));
+                        style.vertical_rail.scroller.color = Color::WHITE;
+
+                        style.vertical_rail.scroller.border = border::rounded(6);
+                        style.vertical_rail.border = border::rounded(8)
+                            .width(2)
+                            .color(Color::new(1., 1., 1., 0.02));
                     }
                 }
             }
@@ -105,7 +104,7 @@ impl Default for PlaybackButtonStyle {
     fn default() -> Self {
         Self(button::Style {
             text_color: Color::WHITE,
-            border: Border::rounded(2),
+            border: border::rounded(2),
             background: Some(Background::Color(Color::TRANSPARENT)),
             ..Default::default()
         })
@@ -135,9 +134,12 @@ impl Default for PickListStyle {
             placeholder_color: Color::WHITE,
             handle_color: Color::WHITE,
             background: iced::Background::Color(Color::TRANSPARENT),
-            border: Border::rounded(4)
-                .with_width(1)
-                .with_color(Color::new(1., 1., 1., 0.5)),
+
+            border: Border {
+                color: Color::new(1., 1., 1., 0.5),
+                width: 1.,
+                radius: 4.into(),
+            },
         })
     }
 }
@@ -148,7 +150,7 @@ impl From<Color> for PickListStyle {
             placeholder_color: Color::WHITE,
             handle_color: value,
             background: iced::Background::Color(Color::TRANSPARENT),
-            border: Border::rounded(4).with_width(2).with_color(value),
+            border: border::rounded(4).width(2).color(value),
         })
     }
 }
@@ -169,20 +171,6 @@ impl PickListStyle {
             }
 
             style
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct PickMenuStyle(pub menu::Style);
-impl Default for PickMenuStyle {
-    fn default() -> Self {
-        Self(menu::Style {
-            background: Background::Color(Color::BLACK),
-            border: Border::rounded(4).with_width(1).with_color(Color::WHITE),
-            text_color: Color::WHITE,
-            selected_text_color: Color::BLACK,
-            selected_background: Background::Color(Color::WHITE),
         })
     }
 }

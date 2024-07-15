@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use rand::{seq::SliceRandom, thread_rng, Rng};
 
 use super::RecursiveSongOp;
@@ -28,7 +26,11 @@ pub trait OperationTracker {
     fn get_current(&self) -> Box<dyn Iterator<Item = usize>>;
 
     /// Sets the current tree of indexes to get to the current song.
-    fn set_current(&mut self, indices: VecDeque<usize>);
+    fn set_current(&mut self, indices: &[usize]) {
+        self.set_current_(indices, 0)
+    }
+
+    fn set_current_(&mut self, indices: &[usize], idx: usize);
 
     fn move_next(&mut self) -> NextResult;
 
@@ -269,7 +271,7 @@ impl OperationTracker for SongOpTracker {
         }
     }
 
-    fn set_current(&mut self, mut indices: VecDeque<usize>) {
+    fn set_current_(&mut self, indices: &[usize], idx: usize) {
         match self {
             SongOpTracker::SinglePlay => {
                 println!["indices: {:?}", indices];
@@ -305,11 +307,11 @@ impl OperationTracker for SongOpTracker {
                 ref mut current,
                 ref mut children,
             } => {
-                if let Some(idx) = indices.pop_front() {
-                    *current = idx;
-                    if !indices.is_empty() {
+                if let Some(cidx) = indices.get(idx) {
+                    *current = *cidx;
+                    if indices.len() < cidx + 1 {
                         let selected_child = &mut children[*current];
-                        selected_child.set_current(indices);
+                        selected_child.set_current_(indices, idx);
                     }
                 }
             }
@@ -501,7 +503,7 @@ impl SongOpTracker {
         ops.iter().map(Self::from).collect::<C>()
     }
 
-    pub fn from_song_op(song_op: &RecursiveSongOp, indices: VecDeque<usize>) -> Self {
+    pub fn from_song_op(song_op: &RecursiveSongOp, indices: &[usize]) -> Self {
         let mut s = Self::from(song_op);
         s.set_current(indices);
         s

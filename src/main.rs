@@ -6,13 +6,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use iced::advanced::Application;
-use iced::{alignment::Horizontal, Command as Cm, Element, Length, Subscription};
-use iced::{executor, window, Color, Renderer, Settings, Size};
+use iced::{alignment::Horizontal, Element, Length, Subscription, Task as T};
 use iced::{
     theme::{Palette, Theme},
     widget::{button, column, container, text},
 };
+use iced::{window, Color, Settings, Size};
 use parking_lot::Mutex;
 use styling::transition_scheme;
 
@@ -67,20 +66,8 @@ enum MAINMessage {
     YtmrsMessage(YtmrsMsg),
 }
 
-impl Main {}
-
-impl Application for Main {
-    type Executor = executor::Default;
-
-    type Message = MAINMessage;
-
-    type Theme = Theme;
-
-    type Renderer = Renderer;
-
-    type Flags = Arc<Mutex<BackendHandler>>;
-
-    fn new(backend: Self::Flags) -> (Self, Cm<Self::Message>) {
+impl Main {
+    fn new(backend: Arc<Mutex<BackendHandler>>) -> (Self, T<MAINMessage>) {
         let me = Self {
             backend,
             state: None,
@@ -88,7 +75,7 @@ impl Application for Main {
 
         (
             me,
-            Cm::perform(YTMRSettings::load_default(), MAINMessage::Loaded),
+            T::perform(YTMRSettings::load_default(), MAINMessage::Loaded),
         )
     }
 
@@ -120,7 +107,7 @@ impl Application for Main {
         }
     }
 
-    fn update(&mut self, message: Self::Message) -> Cm<Self::Message> {
+    fn update(&mut self, message: MAINMessage) -> T<MAINMessage> {
         match &mut self.state {
             None => match message {
                 MAINMessage::Loaded(o) => {
@@ -138,7 +125,7 @@ impl Application for Main {
                     });
                     commands
                 }
-                _ => Cm::none(),
+                _ => T::none(),
             },
             Some(ref mut state) => match message {
                 MAINMessage::UpdateVisibleBackground(scheme_state) => {
@@ -147,7 +134,7 @@ impl Application for Main {
                         SchemeState::Transitioning(_) => {
                             state.state = scheme_state.clone();
 
-                            Cm::perform(
+                            T::perform(
                                 transition_scheme(scheme_state),
                                 |state: SchemeState| -> MAINMessage {
                                     MAINMessage::UpdateVisibleBackground(state)
@@ -156,7 +143,7 @@ impl Application for Main {
                         }
                         SchemeState::Finished(_) => {
                             state.state = *Box::new(scheme_state);
-                            Cm::none()
+                            T::none()
                         }
                     }
                 }
@@ -167,8 +154,8 @@ impl Application for Main {
                         started: SystemTime::now(),
                     }));
                     state.state = schemestate.clone();
-                    Cm::batch([
-                        Cm::perform(
+                    T::batch([
+                        T::perform(
                             transition_scheme(schemestate),
                             MAINMessage::UpdateVisibleBackground,
                         ),
@@ -186,16 +173,16 @@ impl Application for Main {
                 }
                 MAINMessage::Save => {
                     state.ytmrs.prepare_to_save();
-                    Cm::perform(state.ytmrs.settings.clone().save(), MAINMessage::Saved)
+                    T::perform(state.ytmrs.settings.clone().save(), MAINMessage::Saved)
                 }
                 MAINMessage::Saved(success) => {
                     match success {
                         Ok(p) => println!["Saved to {p:?}"],
                         Err(e) => println!["{e:?}"],
                     }
-                    Cm::none()
+                    T::none()
                 }
-                _ => Cm::none(),
+                _ => T::none(),
             },
         }
     }
@@ -207,17 +194,13 @@ impl Application for Main {
         }
     }
 
-    fn view(&self) -> Element<'_, Self::Message, Self::Theme, Self::Renderer> {
+    fn view(&self) -> Element<'_, MAINMessage> {
         match &self.state {
-            None => container(
-                text("Loading...")
-                    .horizontal_alignment(Horizontal::Center)
-                    .size(50),
-            )
-            .align_x(Horizontal::Center)
-            .width(Length::Fill)
-            .center_y(Length::Fill)
-            .into(),
+            None => container(text("Loading...").align_x(Horizontal::Center).size(50))
+                .align_x(Horizontal::Center)
+                .width(Length::Fill)
+                .center_y(Length::Fill)
+                .into(),
 
             Some(state) => {
                 let contents = {
@@ -253,42 +236,46 @@ impl Application for Main {
 pub fn main() -> iced::Result {
     let backend = Arc::new(Mutex::new(BackendHandler::default()));
 
-    let main = Main::run(Settings {
-        id: None,
-        flags: backend.clone(),
-        antialiasing: true,
-        window: window::Settings {
-            size: Size::new(1024.0, 512.0),
-            position: window::Position::Centered,
-            min_size: None,
-            max_size: None,
-            visible: true,
-            resizable: true,
-            decorations: true,
-            transparent: true,
-            level: window::Level::Normal,
-            icon: None,
-            #[cfg(target_os = "macos")]
-            platform_specific: window::settings::PlatformSpecific {
-                title_hidden: true,
-                titlebar_transparent: true,
-                fullsize_content_view: true,
-            },
-            #[cfg(target_os = "windows")]
-            platform_specific: window::settings::PlatformSpecific {
-                parent: None,
-                drag_and_drop: false,
-                skip_taskbar: false,
-            },
-            #[cfg(target_os = "linux")]
-            platform_specific: window::settings::PlatformSpecific {
-                application_id: "YtmRs".to_string(),
-            },
+    let result = {
+        let sent_backend = Arc::clone(&backend);
+        iced::application(Main::title, Main::update, Main::view)
+            .settings(Settings {
+                id: None,
+                antialiasing: true,
+                ..Default::default()
+            })
+            .window(window::Settings {
+                size: Size::new(1024.0, 512.0),
+                position: window::Position::Centered,
+                min_size: None,
+                max_size: None,
+                visible: true,
+                resizable: true,
+                decorations: true,
+                transparent: true,
+                level: window::Level::Normal,
+                icon: None,
+                #[cfg(target_os = "macos")]
+                platform_specific: window::settings::PlatformSpecific {
+                    title_hidden: true,
+                    titlebar_transparent: true,
+                    fullsize_content_view: true,
+                },
+                #[cfg(target_os = "windows")]
+                platform_specific: window::settings::PlatformSpecific {
+                    drag_and_drop: false,
+                    skip_taskbar: false,
+                },
+                #[cfg(target_os = "linux")]
+                platform_specific: window::settings::PlatformSpecific {
+                    application_id: "YtmRs".to_string(),
+                },
 
-            exit_on_close_request: true,
-        },
-        ..Default::default()
-    });
+                exit_on_close_request: true,
+            })
+            .subscription(Main::subscription)
+            .run_with(|| Main::new(sent_backend))
+    };
 
     println!["App exited"];
 
@@ -301,7 +288,7 @@ pub fn main() -> iced::Result {
         }
     }
 
-    main
+    result
 }
 
 // pub fn main() {
