@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    ops::Add,
     sync::Arc,
 };
 
@@ -9,7 +10,7 @@ use iced::{
     widget::{
         button, column, container, pick_list, row, text, text_input, Column, Container, Row, Space,
     },
-    Element, Length, Renderer, Task as T, Theme,
+    Element, Length, Renderer, Task, Theme,
 };
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -152,7 +153,7 @@ impl TreeDirected for ConstructorItem {
         }
         match self {
             ConstructorItem::Song(_, _) => None,
-            ConstructorItem::Operation(op) => op.item_at_path_(pth, idx + 1),
+            ConstructorItem::Operation(op) => op.item_at_path_(pth, idx),
         }
     }
 
@@ -162,7 +163,7 @@ impl TreeDirected for ConstructorItem {
         }
         match self {
             ConstructorItem::Song(_, _) => None,
-            ConstructorItem::Operation(op) => op.item_at_path_mut_(pth, idx + 1),
+            ConstructorItem::Operation(op) => op.item_at_path_mut_(pth, idx),
         }
     }
 }
@@ -213,8 +214,8 @@ pub enum SongOpMessage {
     Remove(usize),
 
     // Drag-n-drop
-    Dropped(WId, iced::Point, iced::Rectangle),
-    HandleZones(WId, Vec<(iced::advanced::widget::Id, iced::Rectangle)>),
+    // Dropped(WId, iced::Point, iced::Rectangle),
+    // HandleZones(WId, Vec<(iced::advanced::widget::Id, iced::Rectangle)>),
     SongClicked(WId),
 
     ItemMessage(usize, CItemMessage),
@@ -223,7 +224,7 @@ pub enum SongOpMessage {
 }
 
 pub enum UpdateResult {
-    Cm(T<SongOpMessage>),
+    Task(Task<SongOpMessage>),
     SongClicked(WId),
     Move(WId, WId), // from, to
 }
@@ -379,7 +380,7 @@ impl SongOpConstructor {
             .cloned()
             .collect();
 
-        let map: HashMap<String, _> = match &self.cache {
+        let known_map: HashMap<String, _> = match &self.cache {
             Some(lock) => {
                 let c = lock.read();
                 c.fetch_existing(&songs)
@@ -390,7 +391,7 @@ impl SongOpConstructor {
         let items = self.list.iter().enumerate().map(|(idx, item)| match item {
             ConstructorItem::Song(key, sid) => {
                 let data = {
-                    match map.get(key) {
+                    match known_map.get(key) {
                         Some(arc) => {
                             let x = arc.read();
                             x.as_data()
@@ -487,8 +488,8 @@ impl SongOpConstructor {
                             }
                             _ => match op.update(*somsg) {
                                 Some(result) => match result {
-                                    UpdateResult::Cm(cm) => {
-                                        Some(UpdateResult::Cm(cm.map(move |msg| {
+                                    UpdateResult::Task(cm) => {
+                                        Some(UpdateResult::Task(cm.map(move |msg| {
                                             SongOpMessage::ItemMessage(
                                                 idx,
                                                 CItemMessage::Operation(Box::new(msg)),
@@ -522,28 +523,28 @@ impl SongOpConstructor {
                 self.operation = op;
                 None
             }
-            SongOpMessage::Dropped(_original_id, _point, _rec) => {
-                // Some(UpdateResult::Cm(zones_on_point(
-                //     move |zones| SongOpMessage::HandleZones(original_id.clone(), zones),
-                //     point,
-                //     None,
-                //     None,
-                // )))
-                None
-            }
-            SongOpMessage::HandleZones(original_id, zones) => {
-                // TODO: This assumes the last zone was the desired target
-                match zones.last() {
-                    Some((target_id, _rec)) => {
-                        if original_id != *target_id {
-                            Some(UpdateResult::Move(original_id, target_id.clone()))
-                        } else {
-                            None
-                        }
-                    }
-                    None => None,
-                }
-            }
+            // SongOpMessage::Dropped(_original_id, _point, _rec) => {
+            //     Some(UpdateResult::Cm(zones_on_point(
+            //         move |zones| SongOpMessage::HandleZones(original_id.clone(), zones),
+            //         point,
+            //         None,
+            //         None,
+            //     )))
+            //     None
+            // }
+            // SongOpMessage::HandleZones(original_id, zones) => {
+            //     // TODO: This assumes the last zone was the desired target
+            //     match zones.last() {
+            //         Some((target_id, _rec)) => {
+            //             if original_id != *target_id {
+            //                 Some(UpdateResult::Move(original_id, target_id.clone()))
+            //             } else {
+            //                 None
+            //             }
+            //         }
+            //         None => None,
+            //     }
+            // }
             SongOpMessage::Collapse => {
                 self.collapsed = true;
                 None
@@ -652,8 +653,8 @@ impl TreeDirected for SongOpConstructor {
         if pth.len() == idx {
             return None;
         }
-        let subitem = self.list.get(idx)?;
-        if pth.len() == idx + 1 {
+        let subitem = self.list.get(pth[idx])?;
+        if pth.len() == (idx.add(1)) {
             Some(subitem)
         } else {
             subitem.item_at_path_(pth, idx + 1)

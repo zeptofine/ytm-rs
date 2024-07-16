@@ -16,7 +16,8 @@ use iced::{
         container::{Container, Id as CId},
         image::Handle,
         row, Space,
-    }, Element, Length, Subscription, Task,
+    },
+    Element, Length, Subscription, Task,
 };
 use kira::sound::{static_sound::StaticSoundData, PlaybackState};
 use parking_lot::Mutex;
@@ -33,10 +34,9 @@ use crate::{
     response_types::YTResponseType,
     search_window::{SWMessage, SearchEntry, SearchType, SearchWindow},
     settings::YTMRSettings,
-    song::{Song},
+    song::Song,
     song_operations::{
-        self, ConstructorItem, OperationTracker, SongOpTracker, TreeDirected,
-        UpdateResult,
+        self, ConstructorItem, OperationTracker, SongOpTracker, TreeDirected, UpdateResult,
     },
     styling::{BasicYtmrsScheme, FullYtmrsScheme},
     thumbnails::get_images,
@@ -510,7 +510,7 @@ impl Ytmrs {
                     PlaylistMessage::ConstructorMessage(msg) => {
                         match self.settings.playlist.constructor.update(msg) {
                             Some(msg) => match msg {
-                                UpdateResult::Cm(cm) => cm.map(|m| {
+                                UpdateResult::Task(cm) => cm.map(|m| {
                                     YtmrsMsg::PlaylistMsg(PlaylistMessage::ConstructorMessage(m))
                                 }),
                                 UpdateResult::SongClicked(wid) => self.song_clicked(wid),
@@ -958,7 +958,7 @@ impl Ytmrs {
 
         println!["Given path: {:?}", path];
         let song_op = self.settings.playlist.constructor.build();
-        println!["Song op: {:?}", song_op];
+        println!["Song op: {:#?}", song_op];
         println!["Is valid: {:?}", song_op.is_valid()];
         println!["Loop type: {:?}", song_op.loop_type()];
         if !song_op.is_valid() {

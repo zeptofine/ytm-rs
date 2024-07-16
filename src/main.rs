@@ -274,6 +274,7 @@ pub fn main() -> iced::Result {
                 exit_on_close_request: true,
             })
             .subscription(Main::subscription)
+            .theme(Main::theme)
             .run_with(|| Main::new(sent_backend))
     };
 

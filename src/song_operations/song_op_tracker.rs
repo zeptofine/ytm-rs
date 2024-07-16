@@ -310,8 +310,8 @@ impl OperationTracker for SongOpTracker {
                 if let Some(cidx) = indices.get(idx) {
                     *current = *cidx;
                     if indices.len() < cidx + 1 {
-                        let selected_child = &mut children[*current];
-                        selected_child.set_current_(indices, idx);
+                        let selected_child = &mut children[*cidx];
+                        selected_child.set_current_(indices, idx + 1);
                     }
                 }
             }
@@ -512,12 +512,15 @@ impl SongOpTracker {
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
+
     use crate::song_operations::{
-        BackResult, NextResult, OperationTracker, RecursiveSongOp as RSO, SongOpTracker,
+        BackResult, ConstructorItem, NextResult, OperationTracker, RecursiveSongOp as RSO,
+        SongOpConstructor, SongOpTracker, TreeDirected,
     };
 
     #[test]
-    pub fn tester() {
+    pub fn test_id_reading() {
         let ops: RSO = RSO::PlayOnce(vec![
             RSO::SinglePlay("".to_string()),
             RSO::PlayOnce(vec![
@@ -546,5 +549,33 @@ mod tests {
         while BackResult::Current == tracker.move_back() {
             println!["{:?}", tracker.get_current().collect::<Vec<_>>()];
         }
+    }
+
+    #[test]
+    pub fn test_fetching_from_song_op() {
+        let constructor = SongOpConstructor::from(vec![
+            ConstructorItem::from("123".to_string()),
+            ConstructorItem::Operation(SongOpConstructor::from(vec![
+                ConstructorItem::from("456".to_string()),
+                ConstructorItem::from("789".to_string()),
+            ])),
+        ]);
+        println!["{:#?}", constructor];
+        let mut tracker = SongOpTracker::from(&constructor.build());
+        println!["{:#?}", tracker];
+
+        let current = tracker.get_current().collect_vec();
+        println!["{:#?}", current];
+        println!["{:#?}", constructor.item_at_path(&current)];
+
+        tracker.move_next();
+        let current = tracker.get_current().collect_vec();
+        println!["{:#?}", current];
+        println!["{:#?}", constructor.item_at_path(&current)];
+
+        tracker.move_next();
+        let current = tracker.get_current().collect_vec();
+        println!["{:#?}", current];
+        println!["{:#?}", constructor.item_at_path(&current)];
     }
 }

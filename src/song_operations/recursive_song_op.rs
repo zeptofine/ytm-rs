@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::settings::SongKey;
 
+use super::SongOpConstructor;
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum InfLoopType {
     Never,
@@ -69,5 +71,11 @@ impl RecursiveSongOp {
                 }
             }
         }
+    }
+}
+
+impl From<&SongOpConstructor> for RecursiveSongOp {
+    fn from(value: &SongOpConstructor) -> Self {
+        value.build()
     }
 }
