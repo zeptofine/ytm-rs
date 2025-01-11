@@ -1,5 +1,5 @@
-// #![windows_subsystem = "windows"]
-// #![allow(dead_code)]
+#[allow(unused)]
+
 
 use std::fmt::Debug;
 use std::path::PathBuf;
@@ -23,7 +23,6 @@ mod response_types;
 mod search_window;
 mod settings;
 mod song;
-mod song_list;
 mod song_operations;
 mod styling;
 mod thumbnails;
@@ -269,6 +268,7 @@ pub fn main() -> iced::Result {
                 #[cfg(target_os = "linux")]
                 platform_specific: window::settings::PlatformSpecific {
                     application_id: "YtmRs".to_string(),
+                    override_redirect: false,
                 },
 
                 exit_on_close_request: true,
@@ -291,25 +291,3 @@ pub fn main() -> iced::Result {
 
     result
 }
-
-// pub fn main() {
-//     let sound = Sound::from_path("BeetrootKvass.wav").unwrap();
-//     let sample_rate = sound.sample_rate();
-//     let duration = sound.duration();
-//     println!("Duration: {:?}", duration);
-//     println!["Sample rate: {:?}", sample_rate];
-
-//     let mut mixer = Mixer::new();
-//     mixer.init();
-
-//     let playing_sound = mixer.play(sound);
-
-//     while !playing_sound.finished() {
-//         std::thread::sleep(Duration::from_millis(500));
-//         let index = playing_sound.index();
-//         let secs = index as f32 / sample_rate as f32;
-//         let finished = secs / duration.as_secs_f32();
-//         println!["Current seconds: {:?}", secs];
-//         println!["Percentage finished: {:?}", finished * 100.0];
-//     }
-// }

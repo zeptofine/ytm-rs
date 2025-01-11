@@ -5,6 +5,7 @@ use iced::{
     widget::image::Handle,
     Background, Color, Degrees, Gradient,
 };
+use material_colors::quantize::{Quantizer, QuantizerWu};
 
 use crate::{
     styling::{
@@ -15,8 +16,8 @@ use crate::{
 };
 
 use ::{
-    image::{imageops::FilterType, io::Reader, GenericImageView},
-    material_colors::{color::Argb, quantize::QuantizerWsmeans, score::Score, theme::ThemeBuilder},
+    image::{imageops::FilterType, GenericImageView, ImageReader},
+    material_colors::{color::Argb, score::Score, theme::ThemeBuilder},
     std::path::PathBuf,
 };
 
@@ -70,7 +71,7 @@ impl BasicYtmrsScheme {
         // I dont even know if wrapping this in a thread does anything but it
         // doesnt seem to block the UI so I'm happy
         let thread = thread::spawn(move || {
-            let mut image = Reader::open(path)
+            let mut image = ImageReader::open(path)
                 .expect("Failed to open")
                 .decode()
                 .expect("Failed to decode image");
@@ -80,16 +81,12 @@ impl BasicYtmrsScheme {
                 image = image.resize(128, 128, FilterType::Nearest);
             }
 
-            let result = QuantizerWsmeans::quantize(
+            let result = QuantizerWu::quantize(
                 &image
                     .pixels()
                     .map(|p| pixel_to_argb(p.2))
                     .collect::<Vec<_>>(),
                 128,
-                None,
-                None,
-                Some(100_000),
-                None,
             );
             let scores = Score::score(
                 &result.color_to_count,

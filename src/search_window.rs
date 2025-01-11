@@ -174,9 +174,6 @@ impl SearchType {
 
 #[derive(Debug, Clone)]
 pub enum SWMessage {
-    Drop(String, iced::Point, iced::Rectangle),
-    HandleZones(String, Vec<(iced::advanced::widget::Id, iced::Rectangle)>),
-
     SearchQueryChanged(String),
     SearchQuerySubmitted,
     SimpleSelectSong(usize),
@@ -244,8 +241,6 @@ impl SearchWindow {
             }
 
             // Handle dragndrop
-            SWMessage::Drop(_key, _point, _) => unreachable!(),
-            SWMessage::HandleZones(_, _) => unreachable!(),
             SWMessage::SearchQueryChanged(s) => {
                 self.query = s;
                 Task::none()

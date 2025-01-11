@@ -22,7 +22,6 @@ use readers::{FolderBasedReader, LazyFolderBasedReader, LineBasedReader};
 pub struct YtmrsCache {
     pub song_metadata: RwArc<NDJsonCache<Song>>,
     pub sounds: FolderCache<BasicSoundData>,
-    pub thumbnails: LazyFolderBasedReader,
 }
 
 impl Default for YtmrsCache {
@@ -32,7 +31,6 @@ impl Default for YtmrsCache {
                 song_metadata_path(),
             )))),
             sounds: FolderCache::new(FolderBasedReader::new(song_audio_path())),
-            thumbnails: LazyFolderBasedReader::new(thumbnails_directory()),
         }
     }
 }

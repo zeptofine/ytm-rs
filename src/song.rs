@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use iced::{
     advanced::image as iced_image,
     alignment::{Horizontal, Vertical},
-    widget::{self, button, column, container, hover, row, text, Image, Row, Text}, Background, Border, Color, Element, Length, Shadow, Vector,
+    widget::{self, button, column, container, hover, row, text, Image, Row, Text},
+    Background, Border, Color, Element, Length, Shadow, Vector,
 };
 
 #[cfg(feature = "svg")]
@@ -51,8 +52,6 @@ pub struct Song {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub requested_downloads: Option<Vec<RequestedDownload>>,
     #[serde(skip)]
-    pub thumbnail_handle: Option<iced_image::Handle>,
-    #[serde(skip)]
     pub ui_state: SongState,
 }
 
@@ -83,7 +82,6 @@ impl Song {
                 .take(thread_rng().gen_range(0..=5))
                 .collect(),
             requested_downloads: None,
-            thumbnail_handle: None,
             ui_state: SongState::default(),
         }
     }
@@ -94,7 +92,6 @@ impl Song {
             channel: self.channel.clone(),
             artists: self.artists.clone(),
             duration: self.duration,
-            handle: self.thumbnail_handle.clone(),
             state: self.ui_state.clone(),
         }
     }
@@ -132,7 +129,6 @@ pub struct SongData {
     pub channel: String,
     pub artists: Option<Vec<String>>,
     pub duration: f64,
-    pub handle: Option<iced_image::Handle>,
     pub state: SongState,
 }
 impl SongData {
@@ -143,7 +139,6 @@ impl SongData {
             channel: "???".to_string(),
             artists: None,
             duration: -1.0,
-            handle: None,
             state: SongState::default(),
         }
     }
@@ -192,16 +187,22 @@ impl SongData {
     }
 
     pub fn row<'a>(self, clickable: bool, hover_play_button: bool) -> Row<'a, SongMessage> {
-        let img = Self::image_or_placeholder(self.handle.clone(), 80, 80);
+        let row = row![
+            {
+                let play_button = {
+                    #[cfg(feature = "svg")]
+                    let x = Svg::new(PLAY_SVG.clone());
 
-        let c = match clickable {
-            false => img,
-            true => button(img)
-                .padding(0)
-                .on_press(SongMessage::ThumbnailClicked)
-                .style(|_, _| widget::button::Style {
-                    background: None,
-                    text_color: Color::WHITE,
+                    #[cfg(not(feature = "svg"))]
+                    let x = text("|>");
+                    x
+                };
+                container(play_button)
+                .align_x(Horizontal::Center)
+                .align_y(Vertical::Center)
+                .style(|_| widget::container::Style {
+                    background: Some(Background::Color(Color::new(0., 0., 0., 0.75))),
+                    text_color: Some(Color::WHITE),
                     border: Border {
                         color: Color::TRANSPARENT,
                         width: 0.,
@@ -213,45 +214,8 @@ impl SongData {
                         blur_radius: 0.,
                     },
                 })
-                .into(),
-        };
-
-        let row = row![
-            match hover_play_button {
-                false => c,
-                true => {
-                    let play_button = {
-                        #[cfg(feature = "svg")]
-                        let x = Svg::new(PLAY_SVG.clone());
-
-                        #[cfg(not(feature = "svg"))]
-                        let x = text("|>");
-                        x
-                    };
-
-                    hover(
-                        c,
-                        container(play_button)
-                            .align_x(Horizontal::Center)
-                            .align_y(Vertical::Center)
-                            .style(|_| widget::container::Style {
-                                background: Some(Background::Color(Color::new(0., 0., 0., 0.75))),
-                                text_color: Some(Color::WHITE),
-                                border: Border {
-                                    color: Color::TRANSPARENT,
-                                    width: 0.,
-                                    radius: 0.into(),
-                                },
-                                shadow: Shadow {
-                                    color: Color::BLACK,
-                                    offset: Vector::ZERO,
-                                    blur_radius: 0.,
-                                },
-                            })
-                            .width(80)
-                            .height(80),
-                    )
-                }
+                .width(80)
+                .height(80)
             },
             column![text(format!(
                 "{}\n{}\n{}",

@@ -1,6 +1,5 @@
 use iced::{
     border,
-    overlay::menu,
     widget::{button, container, pick_list, scrollable},
     Background, Border, Color, Theme,
 };

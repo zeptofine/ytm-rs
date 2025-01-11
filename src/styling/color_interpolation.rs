@@ -27,10 +27,10 @@ impl Interpolable for InterpColor {
         Self({
             let c2 = &other.0;
             Color::new(
-                map(((&self.0).r, c2.r), ratio),
-                map(((&self.0).g, c2.g), ratio),
-                map(((&self.0).b, c2.b), ratio),
-                map(((&self.0).a, c2.a), ratio),
+                map((self.0.r, c2.r), ratio),
+                map((self.0.g, c2.g), ratio),
+                map((self.0.b, c2.b), ratio),
+                map((self.0.a, c2.a), ratio),
             )
         })
     }

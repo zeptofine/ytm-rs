@@ -1,8 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    ops::Add,
-    sync::Arc,
-};
+use std::ops::Add;
 
 use iced::{
     advanced::widget::Id as WId,
@@ -12,11 +8,10 @@ use iced::{
     },
     Element, Length, Renderer, Task, Theme,
 };
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    caching::{BufferedCache, NDJsonCache},
+    caching::RwMap,
     settings::SongKey,
     song::{Song, SongData},
     styling::FullYtmrsScheme,
@@ -76,10 +71,6 @@ pub trait TreeDirected {
 
     fn pop_path_(&mut self, pth: &[usize], pidx: usize) -> Option<ConstructorItem>;
 
-    fn item_has_id(&mut self, id: &WId) -> bool {
-        self.path_to_id(id).is_some()
-    }
-
     fn path_to_id(&self, id: &WId) -> Option<Vec<usize>>;
 
     fn item_at_path(&self, pth: &[usize]) -> Option<&ConstructorItem> {
@@ -87,12 +78,6 @@ pub trait TreeDirected {
     }
 
     fn item_at_path_(&self, pth: &[usize], idx: usize) -> Option<&ConstructorItem>;
-
-    fn item_at_path_mut(&mut self, pth: &[usize]) -> Option<&mut ConstructorItem> {
-        self.item_at_path_mut_(pth, 0)
-    }
-
-    fn item_at_path_mut_(&mut self, pth: &[usize], idx: usize) -> Option<&mut ConstructorItem>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,16 +139,6 @@ impl TreeDirected for ConstructorItem {
         match self {
             ConstructorItem::Song(_, _) => None,
             ConstructorItem::Operation(op) => op.item_at_path_(pth, idx),
-        }
-    }
-
-    fn item_at_path_mut_(&mut self, pth: &[usize], idx: usize) -> Option<&mut ConstructorItem> {
-        if pth.len() == idx {
-            return Some(self);
-        }
-        match self {
-            ConstructorItem::Song(_, _) => None,
-            ConstructorItem::Operation(op) => op.item_at_path_mut_(pth, idx),
         }
     }
 }
@@ -259,8 +234,6 @@ pub struct SongOpConstructor {
     id: ItemId,
     pub operation: ActualRecursiveOps,
     pub list: Vec<ConstructorItem>,
-    #[serde(skip)]
-    cache: Option<Arc<RwLock<NDJsonCache<Song>>>>,
     pub collapsible: bool,
     collapsed: bool,
     // used for certain operations, like LoopNTimes and Stretch
@@ -272,7 +245,6 @@ impl Default for SongOpConstructor {
             id: Default::default(),
             operation: ActualRecursiveOps::PlayOnce,
             list: vec![],
-            cache: None,
             collapsible: true,
             collapsed: false,
             n: 1,
@@ -280,28 +252,14 @@ impl Default for SongOpConstructor {
     }
 }
 impl SongOpConstructor {
-    pub fn new(
-        operation: ActualRecursiveOps,
-        list: Vec<ConstructorItem>,
-        cache: Option<Arc<RwLock<NDJsonCache<Song>>>>,
-    ) -> Self {
+    pub fn new(operation: ActualRecursiveOps, list: Vec<ConstructorItem>) -> Self {
         Self {
             id: ItemId::default(),
             operation,
             list,
-            cache,
             collapsible: true,
             collapsed: false,
             n: 1,
-        }
-    }
-
-    pub fn set_cache(&mut self, cache: Arc<RwLock<NDJsonCache<Song>>>) {
-        self.cache = Some(cache.clone());
-        for item in &mut self.list {
-            if let ConstructorItem::Operation(op) = item {
-                op.set_cache(cache.clone());
-            }
         }
     }
 
@@ -369,29 +327,16 @@ impl SongOpConstructor {
             .align_y(Vertical::Center)
     }
 
-    fn get_children(&self, scheme: &FullYtmrsScheme) -> Row<'_, SongOpMessage, Theme, Renderer> {
-        let songs: HashSet<String> = self
-            .list
-            .iter()
-            .filter_map(|item| match item {
-                ConstructorItem::Song(key, _) => Some(key),
-                ConstructorItem::Operation(_) => None,
-            })
-            .cloned()
-            .collect();
-
-        let known_map: HashMap<String, _> = match &self.cache {
-            Some(lock) => {
-                let c = lock.read();
-                c.fetch_existing(&songs)
-            }
-            None => HashMap::new(),
-        };
-
+    fn get_children(
+        &self,
+        song_cache: &RwMap<String, Song>,
+        scheme: &FullYtmrsScheme,
+    ) -> Row<'_, SongOpMessage, Theme, Renderer>
+where {
         let items = self.list.iter().enumerate().map(|(idx, item)| match item {
             ConstructorItem::Song(key, sid) => {
                 let data = {
-                    match known_map.get(key) {
+                    match song_cache.get(key) {
                         Some(arc) => {
                             let x = arc.read();
                             x.as_data()
@@ -404,32 +349,17 @@ impl SongOpConstructor {
                     .map(move |_| SongOpMessage::SongClicked(swid.clone()));
 
                 container(
-                    row![
-                        song,
-                        // droppable()
-                        //     .drag_mode(false, true)
-                        //     .drag_hide(true)
-                        //     .on_single_click(SongOpMessage::SongClicked(wid.clone()))
-                        //     .on_drop(move |pt, rec| SongOpMessage::Dropped(wid.clone(), pt, rec)),
-                        button("x").on_press(SongOpMessage::Remove(idx))
-                    ]
-                    .align_y(iced::Alignment::Center),
+                    row![song, button("x").on_press(SongOpMessage::Remove(idx))]
+                        .align_y(iced::Alignment::Center),
                 )
                 .id(sid.0.clone())
                 .into()
             }
-            ConstructorItem::Operation(constructor) => Element::new(
-                constructor.view_nested(scheme), // droppable()
-                                                 //     .drag_mode(false, true)
-                                                 //     .drag_hide(true)
-                                                 //     .on_drag(move |_, _| SongOpMessage::Collapse)
-                                                 //     .on_drop(move |pt, rec| {
-                                                 //         SongOpMessage::Dropped(constructor.id.0.clone().into(), pt, rec)
-                                                 //     }),
-            )
-            .map(move |msg| {
-                SongOpMessage::ItemMessage(idx, CItemMessage::Operation(Box::new(msg)))
-            }),
+            ConstructorItem::Operation(constructor) => {
+                Element::new(constructor.view_nested(song_cache, scheme)).map(move |msg| {
+                    SongOpMessage::ItemMessage(idx, CItemMessage::Operation(Box::new(msg)))
+                })
+            }
         });
 
         row![
@@ -439,24 +369,32 @@ impl SongOpConstructor {
         .width(Length::Fill)
     }
 
-    pub fn view(&self, scheme: &FullYtmrsScheme) -> Container<SongOpMessage> {
+    pub fn view(
+        &self,
+        song_cache: &RwMap<String, Song>,
+        scheme: &FullYtmrsScheme,
+    ) -> Container<SongOpMessage> {
         container(
             column![self.header(scheme, false).width(Length::Fill)]
                 .push_maybe(match self.collapsed {
                     true => None,
-                    false => Some(self.get_children(scheme)),
+                    false => Some(self.get_children(song_cache, scheme)),
                 })
                 .width(Length::Fill),
         )
         .id(self.id.0.clone())
     }
 
-    pub fn view_nested(&self, scheme: &FullYtmrsScheme) -> Container<SongOpMessage> {
+    pub fn view_nested(
+        &self,
+        song_cache: &RwMap<String, Song>,
+        scheme: &FullYtmrsScheme,
+    ) -> Container<SongOpMessage> {
         container(
             column![self.header(scheme, true).width(Length::Fill)]
                 .push_maybe(match self.collapsed {
                     true => None,
-                    false => Some(self.get_children(scheme)),
+                    false => Some(self.get_children(song_cache, scheme)),
                 })
                 .width(Length::Fill),
         )
@@ -510,10 +448,7 @@ impl SongOpConstructor {
                 }
             }
             SongOpMessage::NewGroup => {
-                let constructor = SongOpConstructor {
-                    cache: self.cache.clone(),
-                    ..Default::default()
-                };
+                let constructor = SongOpConstructor::default();
                 self.list.push(ConstructorItem::Operation(constructor));
                 println!["Group added"];
                 println!["{:#?}", self.list];
@@ -587,7 +522,7 @@ impl SongOpConstructor {
 }
 impl From<Vec<ConstructorItem>> for SongOpConstructor {
     fn from(value: Vec<ConstructorItem>) -> Self {
-        Self::new(ActualRecursiveOps::PlayOnce, value, None)
+        Self::new(ActualRecursiveOps::PlayOnce, value)
     }
 }
 impl TreeDirected for SongOpConstructor {
@@ -658,18 +593,6 @@ impl TreeDirected for SongOpConstructor {
             Some(subitem)
         } else {
             subitem.item_at_path_(pth, idx + 1)
-        }
-    }
-
-    fn item_at_path_mut_(&mut self, pth: &[usize], idx: usize) -> Option<&mut ConstructorItem> {
-        if pth.len() == idx {
-            return None;
-        }
-        let subitem = self.list.get_mut(idx)?;
-        if pth.len() == idx + 1 {
-            Some(subitem)
-        } else {
-            subitem.item_at_path_mut_(pth, idx + 1)
         }
     }
 }

@@ -1,6 +1,3 @@
-use std::{collections::HashMap, sync::Arc};
-
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 use super::{readers::LineBasedReader, BufferedCache, IDed, RwMap};
@@ -27,10 +24,10 @@ impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> NDJsonCache<T> {
 impl<T: Serialize + for<'de> Deserialize<'de> + IDed<String>> BufferedCache<String, T>
     for NDJsonCache<T>
 {
-    fn items(&self) -> &HashMap<String, Arc<RwLock<T>>> {
+    fn items(&self) -> &RwMap<String, T> {
         &self.map
     }
-    fn items_mut(&mut self) -> &mut HashMap<String, Arc<RwLock<T>>> {
+    fn items_mut(&mut self) -> &mut RwMap<String, T> {
         &mut self.map
     }
 
